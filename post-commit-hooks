@@ -1,0 +1,103 @@
+#!/bin/bash
+
+CORE=${CORE:-$HOME/dev/core}
+ID=${ID:-$HOME/dev/id}
+
+if ! command -v jq > /dev/null; then
+  cat <<JQ
+jq command not found. Install with:
+  brew install jq
+JQ
+  exit 1
+fi
+
+action=${1:-help}
+
+help() {
+   cat <<HELP
+Usage: post-commit-hooks [action]
+Actions:
+  help                    show this help message
+  add                     add riak post-commit hooks to core and id
+  remove                  remove riak post-commit hooks from core and id
+  list                    list the current riak post-commit hooks for core and id
+  rolling-restart-riak    do a rolling restart of core and id riak nodes
+HELP
+}
+
+riak_http_ports() {
+  _app=$1
+  grep --no-file "http," $_app/db/riak/*/etc/app.config | grep -o -E "[0-9]{4}"
+}
+
+riak_buckets() {
+  curl -s 127.0.0.1:$_port/riak\?buckets\=true | jq ".buckets[]" | sed -e 's/\//%2F/' | sed -e 's/"//g'
+}
+
+add() {
+  for _app in $CORE $ID; do
+    echo "Adding Riak post-commit hooks to $_app nodes"
+    update_buckets $_app '{"props":{"postcommit":[{"mod":"kafka_riak_commitlog","fun":"log"}]}}'
+  done
+  updated
+}
+
+remove() {
+  for _app in $CORE $ID; do
+    echo "Removing Riak post-commit hooks from $_app nodes"
+    update_buckets $_app '{"props":{"postcommit":[]}}'
+  done
+  updated
+}
+
+list() {
+  for _app in $CORE $ID; do
+    echo "--- Riak post-commit hooks for $_app nodes ---"
+    riak_http_ports $_app | while read _port; do
+      riak_buckets $_port | while read _bucket; do
+        echo -n "$_bucket^"
+        curl -s 127.0.0.1:$_port/buckets/$_bucket/props | jq -c .props.postcommit
+      done
+    done
+  done | sed -e 's/%2F/\//g' | column -s "^" -t
+}
+
+rolling-restart-riak () {
+  for n in 1 2 3 4; do
+    echo "Restarting core riak node $n"
+    $CORE/db/riak/$n/bin/riak restart
+    $CORE/db/riak/$n/bin/riak-admin wait-for-service riak_kv riak_core_$n@127.0.0.1 2> /dev/null
+  done
+
+  for n in 1 2 3 4; do
+    echo "Restarting id riak node $n"
+    $ID/db/riak/$n/bin/riak restart
+    $ID/db/riak/$n/bin/riak-admin wait-for-service riak_kv riak_id_$n@127.0.0.1 2> /dev/null
+  done
+}
+
+update_buckets() {
+  _app=$1
+  _data=$2
+
+  riak_http_ports $_app | while read _port; do
+    riak_buckets $_port | while read _bucket; do
+      curl -s 127.0.0.1:$_port/buckets/$_bucket/props \
+        -XPUT \
+        -H "Content-Type: application/json" \
+        -d $_data
+    done
+  done
+}
+
+updated() {
+  cat<<UPDATED
+
+Buckets updated. Restart the riak nodes for the changes to take effect.
+
+The following command will do a rolling restart of your local nodes:
+  ./post-commit-hooks rolling-restart-riak
+UPDATED
+}
+
+$action

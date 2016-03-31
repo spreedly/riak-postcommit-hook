@@ -1,0 +1,10 @@
+{application, kafka_riak_commitlog,
+ [
+  {description, "Riak post-commit hook producing to a Kafka topic."},
+  {vsn, "0.1.0"},
+  {modules, []},
+  {registered, []},
+  {env, []},
+  {applications, [kernel, stdlib]}
+ ]
+}.
