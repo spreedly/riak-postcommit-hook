@@ -62,7 +62,7 @@ list() {
   done | sed -e 's/%2F/\//g' | column -s "^" -t
 }
 
-rolling-restart-riak () {
+rolling-restart-riak() {
   for n in 1 2 3 4; do
     echo "Restarting core riak node $n"
     $CORE/db/riak/$n/bin/riak restart
