@@ -27,11 +27,7 @@ extract_key(Object) ->
   riak_object:key(Object).
 
 extract_value(Object) ->
-  JsonString = riak_object:get_value(Object),
-  case json:decode(JsonString) of
-    {ok, Decoded} -> Decoded;
-    {error,insufficient_data} -> <<>>
-  end.
+  riak_object:get_value(Object).
 
 build_kafka_message(Action, Bucket, Key, Value) ->
     Message = {[
