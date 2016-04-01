@@ -33,6 +33,31 @@ The post-commit hook for producing Riak commits to a Kafka topic.
 
 ## Developer Installation
 
+### Install Riak's required version of Erlang
+
+Riak requires included code to be compiled with `Erlang R16B02-basho8`. Follow
+the steps in http://docs.basho.com/riak/latest/ops/building/installing/erlang/
+to get the correct Erlang version installed.
+
+After installation you'll be able to activate and deactivate the Riak version of Erlang.
+
+```
+$HOME/erlang/R16B02-basho8/activate
+$HOME/erlang/R16B02-basho8/deactivate
+```
+
+I suggest making aliases for those commands so switching Erlang versions is easy.
+
+If you don't have the correct Erlang version active then `make` will throw an
+error instead of compiling with the incompatible version.
+
+```
+$ make
+./rebar compile
+==> json (compile)
+ERROR: OTP release 18 does not match required regex R16B02_basho8
+```
+
 ### Compile and install the post-commit hook
 
 ```
