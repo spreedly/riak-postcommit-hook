@@ -6,28 +6,23 @@ The post-commit hook for producing Riak commits to a Kafka topic.
 
 ```json
 {
+  "action": "RIAK COMMIT ACTION (store or delete)",
   "bucket": "RIAK BUCKET",
   "key": "RIAK OBJECT KEY",
   "value": "RIAK OBJECT VALUE"
 }
 ```
 
+The Riak object value is passed along undecoded and unmodified. If the Riak object has JSON (and most or all of ours do) then consumers using the value will need to parse the Kafka message and then parse the value.
+
 ### Example
 
 ```json
 {
+  "action": "store",
   "bucket": "gateways",
-  "key": "MAoc7xHDGk0zDvZMFqv7nRfw2kO",
-  "value": {
-    "created_at": "2016-03-31T20:58:43Z",
-    "state": "retained",
-    "account_key": "UOWPC9x2egNEFRQHshOgTxQnr4C",
-    "description": null,
-    "updated_at": "2016-03-31T20:58:43Z",
-    "gateway_type": "test",
-    "transaction_fee_amount": null,
-    "_type": "TestGateway"
-  }
+  "key": "7WO6r6pIduDcWaXwvqwPTdsn95P",
+  "value": "{\"created_at\":\"2016-04-01T19:35:02Z\",\"state\":\"retained\",\"account_key\":\"UOWPC9x2egNEFRQHshOgTxQnr4C\",\"description\":null,\"updated_at\":\"2016-04-01T19:35:02Z\",\"gateway_type\":\"test\",\"transaction_fee_amount\":null,\"_type\":\"TestGateway\"}"
 }
 ```
 
