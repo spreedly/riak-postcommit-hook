@@ -76,6 +76,18 @@ rolling-restart-riak() {
   done
 }
 
+riak-erl-reload() {
+  for n in 1 2 3 4; do
+    echo "Core riak node $n: reloading erl"
+    $CORE/db/riak/$n/bin/riak-admin erl_reload
+  done
+
+  for n in 1 2 3 4; do
+    echo "Id riak node $n: reloading erl"
+    $ID/db/riak/$n/bin/riak-admin erl_reload
+  done
+}
+
 update_buckets() {
   _app=$1
   _data=$2
