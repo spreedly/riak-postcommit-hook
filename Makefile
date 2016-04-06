@@ -57,4 +57,4 @@ help:
 	@echo "  1. Compile the post-commit hook:               make"
 	@echo "  2. Copy the compiled code to id and core:      make install"
 	@echo "  3. Set post-commit hook in id and core riak:   ./post-commit-hooks add"
-	@echo "  4. Gracefully restart local riak nodes:        ./post-commit-hooks rolling-restart-riak"
+	@echo "  4. (Re)load the ERL code available to riak:    ./post-commit-hooks riak-erl-reload"
