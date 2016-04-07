@@ -41,8 +41,8 @@ get_value(Object) ->
   riak_object:get_value(Object).
 
 produce_to_kafka(Key, Message) ->
-  {ok, Producer} = brod:start_link_producer(?KAFKA),
-  brod:produce_sync(Producer, ?TOPIC, ?PARTITION, Key, Message).
+  {ok, ClientPid} = brod:start_link_client(?KAFKA),
+  brod:produce_sync(ClientPid, ?TOPIC, ?PARTITION, Key, Message).
 
 log_encoding_error(Object, Error) ->
   error_logger:error_msg("[kafka_riak_commitlog] Could not JSON Encode the Kafka message (Error: ~p) for the Riak object: ~p", [Error, Object]).
