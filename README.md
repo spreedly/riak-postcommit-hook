@@ -28,6 +28,11 @@ The Riak object value is passed along undecoded and unmodified. If the Riak obje
 
 ## Developer Installation
 
+### Setup Kafka on your development machine
+
+Our [bootstrap repo](https://github.com/spreedly/bootstrap) has you covered.
+Fetch the latest and run `script/kafka` to get everything setup.
+
 ### Install Riak's required version of Erlang
 
 Riak requires included code to be compiled with `Erlang R16B02-basho8`. Follow
