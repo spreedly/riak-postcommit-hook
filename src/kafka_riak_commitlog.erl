@@ -1,5 +1,5 @@
 -module(kafka_riak_commitlog).
--export([log/1]).
+-export([log/1, produce_to_kafka/2]).
 
 -define(KAFKA, [{"docker", 9092}]).
 -define(TOPIC, <<"commitlog">>).
@@ -7,8 +7,17 @@
 -define(PRODUCER_CONFIG, []).
 
 log(Object) ->
-  {ok, Key, Message} = build_kafka_message(Object),
-  ok = produce_to_kafka(Key, Message).
+  Key = get_key(Object),
+  Bucket = get_bucket(Object),
+  try
+    {ok, Key, Message} = build_kafka_message(Object),
+    {Timing, ok} = timer:tc(?MODULE, produce_to_kafka, [Key, Message]),
+    error_logger:info_msg("~p,~p,~p,~p", [Bucket,Key,ok,Timing])
+  catch
+    Type:Exception ->
+      error_logger:error_msg("~p,~p,~p,~p", [Bucket,Key,Type,Exception]),
+      throw(Exception)
+  end.
 
 build_kafka_message(Object) ->
     Key = get_key(Object),
