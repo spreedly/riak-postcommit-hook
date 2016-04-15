@@ -4,10 +4,11 @@
 -define(KAFKA, [{"docker", 9092}]).
 -define(TOPIC, <<"commitlog">>).
 -define(PARTITION, 0).
+-define(PRODUCER_CONFIG, []).
 
 log(Object) ->
   {ok, Key, Message} = build_kafka_message(Object),
-  produce_to_kafka(Key, Message).
+  ok = produce_to_kafka(Key, Message).
 
 build_kafka_message(Object) ->
     Key = get_key(Object),
@@ -42,6 +43,7 @@ get_value(Object) ->
 
 produce_to_kafka(Key, Message) ->
   {ok, ClientPid} = brod:start_link_client(?KAFKA),
+  ok = brod:start_producer(ClientPid, ?TOPIC, ?PRODUCER_CONFIG),
   brod:produce_sync(ClientPid, ?TOPIC, ?PARTITION, Key, Message).
 
 log_encoding_error(Object, Error) ->
