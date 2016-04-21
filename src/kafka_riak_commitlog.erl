@@ -9,29 +9,23 @@ log(Object) ->
   Key = get_key(Object),
   Bucket = get_bucket(Object),
   try
-    {ok, Key, Message} = build_kafka_message(Object),
+    {ok, Message} = build_kafka_message(Bucket, Key, Object),
     {Timing, ok} = timer:tc(?MODULE, produce_to_kafka, [Key, Message]),
-    error_logger:info_msg("~p,~p,~p,~p", [Bucket,Key,ok,Timing])
+    error_logger:info_msg("~p,~p,~p,~p", [Bucket, Key, ok, Timing])
   catch
     Type:Exception ->
-      error_logger:error_msg("~p,~p,~p,~p", [Bucket,Key,Type,Exception]),
+      error_logger:error_msg("~p,~p,~p,~p", [Bucket, Key, Type, Exception]),
       throw(Exception)
   end.
 
-build_kafka_message(Object) ->
-    Key = get_key(Object),
+build_kafka_message(Bucket, Key, Object) ->
     Message = {[
       {<<"action">>, get_action(Object)},
-      {<<"bucket">>, get_bucket(Object)},
+      {<<"bucket">>, Bucket},
       {<<"key">>,    Key},
       {<<"value">>,  get_value(Object)}
     ]},
-    case json:encode(Message) of
-      {ok, EncodedMessage} -> {ok, Key, EncodedMessage};
-      {error, Error} ->
-        log_encoding_error(Object, Error),
-        {error, Error}
-    end.
+    json:encode(Message).
 
 get_action(Object) ->
   Metadata = riak_object:get_metadata(Object),
@@ -51,6 +45,3 @@ get_value(Object) ->
 
 produce_to_kafka(Key, Message) ->
   brod:produce_sync(?CLIENTNAME, ?TOPIC, ?PARTITION, Key, Message).
-
-log_encoding_error(Object, Error) ->
-  error_logger:error_msg("[kafka_riak_commitlog] Could not JSON Encode the Kafka message (Error: ~p) for the Riak object: ~p", [Error, Object]).
