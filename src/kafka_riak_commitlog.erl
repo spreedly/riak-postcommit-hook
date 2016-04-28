@@ -11,10 +11,10 @@ log(Object) ->
   try
     {ok, Message} = build_kafka_message(Bucket, Key, Object),
     {Timing, ok} = timer:tc(?MODULE, produce_to_kafka, [Key, Message]),
-    error_logger:info_msg("~p,~p,~p,~p", [Bucket, Key, ok, Timing])
+    log_output(Bucket, Key, ok, Timing)
   catch
     Type:Exception ->
-      error_logger:error_msg("~p,~p,~p,~p", [Bucket, Key, Type, Exception]),
+      log_output(Bucket, Key, Type, Exception),
       throw(Exception)
   end.
 
@@ -45,3 +45,19 @@ get_value(Object) ->
 
 produce_to_kafka(Key, Message) ->
   brod:produce_sync(?CLIENTNAME, ?TOPIC, ?PARTITION, Key, Message).
+
+log_output(Bucket, Key, Status, Info) ->
+  LogFile = log_file(Status),
+  Timestamp = iso8601_timestamp(erlang:localtime()),
+  Line = io_lib:format("~p,~p,~p,~p,~p~n", [Timestamp, Bucket, Key, Status, Info]),
+  file:write_file(LogFile, Line, [append]).
+
+log_file(ok) ->
+    "/tmp/kafka_riak_commitlog_metrics.log";
+log_file(_) ->
+    "/tmp/kafka_riak_commitlog_errors.log".
+
+iso8601_timestamp({{Year, Month, Day}, {Hour, Min, Sec}}) ->
+  Format = "~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0BZ",
+  FormattedIso = io_lib:format(Format, [Year, Month, Day, Hour, Min, Sec]),
+  list_to_binary(FormattedIso).
