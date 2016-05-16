@@ -1,37 +1,8 @@
-# kafka-riak-commitlog
+# riak-postcommit-hook
 
-The post-commit hook for producing Riak commits to a Kafka topic.
-
-## Message format
-
-```json
-{
-  "action": "RIAK COMMIT ACTION (store or delete)",
-  "bucket": "RIAK BUCKET",
-  "key": "RIAK OBJECT KEY",
-  "value": "RIAK OBJECT VALUE"
-}
-```
-
-The Riak object value is passed along undecoded and unmodified. If the Riak object has JSON (and most or all of ours do) then consumers using the value will need to parse the Kafka message and then parse the value.
-
-### Example
-
-```json
-{
-  "action": "store",
-  "bucket": "gateways",
-  "key": "7WO6r6pIduDcWaXwvqwPTdsn95P",
-  "value": "{\"created_at\":\"2016-04-01T19:35:02Z\",\"state\":\"retained\",\"account_key\":\"UOWPC9x2egNEFRQHshOgTxQnr4C\",\"description\":null,\"updated_at\":\"2016-04-01T19:35:02Z\",\"gateway_type\":\"test\",\"transaction_fee_amount\":null,\"_type\":\"TestGateway\"}"
-}
-```
+A postcommit hook for Riak that forwards Riak objects to an OTP application for handling.
 
 ## Developer Installation
-
-### Setup Kafka on your development machine
-
-Our [bootstrap repo](https://github.com/spreedly/bootstrap) has you covered.
-Fetch the latest and run `script/kafka` to get everything setup.
 
 ### Install Riak's required version of Erlang
 
@@ -51,11 +22,16 @@ I suggest making aliases for those commands so switching Erlang versions is easy
 If you don't have the correct Erlang version active then `make` will throw an
 error instead of compiling with the incompatible version.
 
-```
-$ make
+e.g.
+
+```bash
+./rebar get-deps
+==> kafka-riak-commitlog (get-deps)
 ./rebar compile
-==> json (compile)
+==> kafka-riak-commitlog (compile)
 ERROR: OTP release 18 does not match required regex R16B02_basho8
+ERROR: compile failed while processing /Users/sdball/github/spreedly/kafka-riak-commitlog: rebar_abort
+make: *** [compile] Error 1
 ```
 
 ### Compile and install the post-commit hook
@@ -83,4 +59,6 @@ $ ./post-commit-hooks add
 $ ./post-commit-hooks rolling-restart-riak
 ```
 
-Done! At this point any commits to your local core or id riak nodes should be writing their object details to a Kafka topic called `commitlog`.
+Done! At this point any commits to your local core or id riak nodes should be
+calling the postcommit hook which will in turn try to forward the Riak objects
+to a separate OTP application.
