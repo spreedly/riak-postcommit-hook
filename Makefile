@@ -50,3 +50,5 @@ help:
 	@echo "  2. Copy the compiled code to id and core:      make install"
 	@echo "  3. Set post-commit hook in id and core riak:   ./post-commit-hooks add"
 	@echo "  4. (Re)load the ERL code available to riak:    ./post-commit-hooks riak-erl-reload"
+	@echo ""
+	@echo "Available commands: clean, distclean, compile, install, ls-install, help"
