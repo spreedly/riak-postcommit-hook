@@ -8,11 +8,17 @@
 %% ---------------------------------------------------------------------------
 
 postcommit_hook(Object) ->
-    Action = get_action(Object),
-    Bucket = get_bucket(Object),
-    Key = get_key(Object),
-    Value = get_value(Object),
-    ok = call_to_remote_node(Action, Bucket, Key, Value).
+    try
+        Action = get_action(Object),
+        Bucket = get_bucket(Object),
+        Key = get_key(Object),
+        Value = get_value(Object),
+        ok = call_to_remote_node(Action, Bucket, Key, Value)
+    catch
+        _Type:Exception ->
+            error_logger:error_msg("Error running postcommit hook: ~p. Object: ~p", [Exception, Object]),
+            throw(Exception)
+    end.
 
 call_to_remote_node(Action, Bucket, Key, Value) ->
     %% gen_server:call({kafka_riak_commitlog, 'commitlog_1@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
