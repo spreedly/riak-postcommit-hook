@@ -2,6 +2,8 @@
 -export([postcommit_hook/1, call_to_remote_node/4, cast_to_remote_node/4]).
 
 -define(OTP_PROCESS, kafka_riak_commitlog).
+-define(STATSD_HOST, "127.0.0.1").
+-define(STATSD_PORT, 8125).
 
 %% ---------------------------------------------------------------------------
 %% API
@@ -13,7 +15,8 @@ postcommit_hook(Object) ->
         Bucket = get_bucket(Object),
         Key = get_key(Object),
         Value = get_value(Object),
-        ok = call_to_remote_node(Action, Bucket, Key, Value)
+        {Timing, ok} = timer:tc(?MODULE, call_to_remote_node, [Action, Bucket, Key, Value]),
+        send_timing_to_statsd(Timing)
     catch
         _Type:Exception ->
             error_logger:error_msg("Error running postcommit hook: ~p. Object: ~p", [Exception, Object]),
@@ -58,3 +61,8 @@ remote_node() ->
     [_, _, N] = string:tokens(Name, "_"),
     Remote = "commitlog_" ++ N ++ "@" ++ IP,
     list_to_atom(Remote).
+
+send_timing_to_statsd(Timing) ->
+    {ok, Socket} = gen_udp:open(0, [binary]),
+    StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
+    ok = gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage).
