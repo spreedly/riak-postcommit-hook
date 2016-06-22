@@ -1,5 +1,5 @@
 -module(kafka_riak_commitlog).
--export([postcommit_hook/1, call_to_remote_node/4, cast_to_remote_node/4]).
+-export([postcommit_hook/1, call_to_remote_node/4]).
 
 -define(OTP_PROCESS, kafka_riak_commitlog).
 -define(STATSD_HOST, "127.0.0.1").
@@ -28,13 +28,6 @@ call_to_remote_node(Action, Bucket, Key, Value) ->
     Remote = {?OTP_PROCESS, remote_node()},
     Body = {produce, Action, Bucket, Key, Value},
     gen_server:call(Remote, Body).
-
-cast_to_remote_node(Action, Bucket, Key, Value) ->
-    %% gen_server:cast({kafka_riak_commitlog, 'commitlog_1@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
-    Remote = {?OTP_PROCESS, remote_node()},
-    Body = {produce, Action, Bucket, Key, Value},
-    gen_server:cast(Remote, Body).
-
 
 %% ---------------------------------------------------------------------------
 %% Internal
