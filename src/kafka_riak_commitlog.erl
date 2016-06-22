@@ -1,7 +1,8 @@
 -module(kafka_riak_commitlog).
 -export([postcommit_hook/1, call_to_remote_node/4]).
 
--define(OTP_PROCESS, kafka_riak_commitlog).
+-define(COMMITLOG_NODE, 'commitlog@127.0.0.1').
+-define(COMMITLOG_PROCESS, kafka_riak_commitlog).
 -define(STATSD_HOST, "127.0.0.1").
 -define(STATSD_PORT, 8125).
 
@@ -25,7 +26,7 @@ postcommit_hook(Object) ->
 
 call_to_remote_node(Action, Bucket, Key, Value) ->
     %% gen_server:call({kafka_riak_commitlog, 'commitlog_1@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
-    Remote = {?OTP_PROCESS, remote_node()},
+    Remote = {?COMMITLOG_PROCESS, ?COMMITLOG_NODE},
     Body = {produce, Action, Bucket, Key, Value},
     gen_server:call(Remote, Body).
 
@@ -48,12 +49,6 @@ get_key(Object) ->
 
 get_value(Object) ->
     riak_object:get_value(Object).
-
-remote_node() ->
-    [Name, IP] = string:tokens(atom_to_list(node()), "@"),
-    [_, _, N] = string:tokens(Name, "_"),
-    Remote = "commitlog_" ++ N ++ "@" ++ IP,
-    list_to_atom(Remote).
 
 send_timing_to_statsd(Timing) ->
     {ok, Socket} = gen_udp:open(0, [binary]),
