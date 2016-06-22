@@ -1,5 +1,5 @@
--module(kafka_riak_commitlog).
--export([postcommit_hook/1, call_to_remote_node/4]).
+-module(postcommit_hook).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
 
 -define(COMMITLOG_NODE, 'commitlog@127.0.0.1').
 -define(COMMITLOG_PROCESS, kafka_riak_commitlog).
@@ -10,13 +10,13 @@
 %% API
 %% ---------------------------------------------------------------------------
 
-postcommit_hook(Object) ->
+send_to_kafka_riak_commitlog(Object) ->
     try
         Action = get_action(Object),
         Bucket = get_bucket(Object),
         Key = get_key(Object),
         Value = get_value(Object),
-        {Timing, ok} = timer:tc(?MODULE, call_to_remote_node, [Action, Bucket, Key, Value]),
+        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
         send_timing_to_statsd(Timing)
     catch
         _Type:Exception ->
@@ -24,7 +24,7 @@ postcommit_hook(Object) ->
             throw(Exception)
     end.
 
-call_to_remote_node(Action, Bucket, Key, Value) ->
+sync_to_commitlog(Action, Bucket, Key, Value) ->
     %% gen_server:call({kafka_riak_commitlog, 'commitlog_1@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
     Remote = {?COMMITLOG_PROCESS, ?COMMITLOG_NODE},
     Body = {produce, Action, Bucket, Key, Value},

@@ -1,0 +1,10 @@
+{application, postcommit_hook,
+ [
+  {description, "Riak postcommit hook module."},
+  {vsn, "0.1.0"},
+  {modules, []},
+  {registered, []},
+  {env, []},
+  {applications, [kernel, stdlib]}
+ ]
+}.

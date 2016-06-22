@@ -40,7 +40,7 @@ riak_buckets() {
 add() {
   for _app in $CORE $ID; do
     echo "Adding Riak post-commit hooks to $_app nodes"
-    update_buckets $_app '{"props":{"postcommit":[{"mod":"kafka_riak_commitlog","fun":"postcommit_hook"}]}}'
+    update_buckets $_app '{"props":{"postcommit":[{"mod":"postcommit_hook","fun":"send_to_kafka_riak_commitlog"}]}}'
   done
 }
 
