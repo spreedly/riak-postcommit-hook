@@ -22,7 +22,6 @@ Actions:
   add                     add riak post-commit hooks to core and id
   remove                  remove riak post-commit hooks from core and id
   list                    list the current riak post-commit hooks for core and id
-  riak-erl-reload         reload the erl code (use after "make install")
   riak-rolling-restart    do a rolling restart of core and id riak nodes
   riak                    execute riak command on core and id riak nodes
   riak-admin              execute riak-admin command on core and id riak nodes
@@ -43,7 +42,6 @@ add() {
     echo "Adding Riak post-commit hooks to $_app nodes"
     update_buckets $_app '{"props":{"postcommit":[{"mod":"kafka_riak_commitlog","fun":"postcommit_hook"}]}}'
   done
-  updated
 }
 
 remove() {
@@ -51,7 +49,6 @@ remove() {
     echo "Removing Riak post-commit hooks from $_app nodes"
     update_buckets $_app '{"props":{"postcommit":[]}}'
   done
-  updated
 }
 
 list() {
@@ -122,22 +119,6 @@ update_buckets() {
         -d $_data
     done
   done
-}
-
-updated() {
-  cat<<UPDATED
-
-Buckets updated. Tell Riak nodes to reload ERL or to restart for changes to take effect:
-
-Reload ERL:
-  ./post-commit-hooks riak-admin erl_reload
-
-Rolling restart of Riak nodes:
-  ./post-commit-hooks riak-rolling-restart
-
-Hard restart of all Riak nodes (you'll probably need to restart core/id as well):
-  ./post-commit-hooks riak restart
-UPDATED
 }
 
 $action $arg

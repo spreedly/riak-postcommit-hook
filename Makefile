@@ -24,6 +24,8 @@ install:
 	@for n in 1 2 3 4; do \
 		find . -iname "*.beam" -exec cp {} $(CORE_RIAK_BEAMS_DIR) \; ; \
 		find . -iname "*.beam" -exec cp {} $(ID_RIAK_BEAMS_DIR) \; ; \
+		$(CORE)/db/riak/$$n/bin/riak-admin erl_reload > /dev/null \; ; \
+		$(ID)/db/riak/$$n/bin/riak-admin erl_reload > /dev/null \; ; \
 	done
 	@echo "Post-commit code copied to id and core."
 
