@@ -5,7 +5,6 @@ ID ?= $(HOME)/dev/id
 CORE_RIAK_BEAMS_DIR ?= $(CORE)/db/riak/$$n/tmp/beams
 ID_RIAK_BEAMS_DIR ?= $(ID)/db/riak/$$n/tmp/beams
 VSN = `grep vsn src/postcommit_hook.app.src | cut -d ',' -f 2 | grep -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"`
-GIT_SHA = `git log -1 --format=%H`
 
 all: compile
 
@@ -50,12 +49,12 @@ ls-install:
 .PHONY:release
 release: compile
 	mkdir -p rel
-	tar czvf rel/postcommit_hook-${GIT_SHA}.tar.gz -C ebin postcommit_hook.beam
-	s3cmd put rel/postcommit_hook-${GIT_SHA}.tar.gz s3://spreedly-kafka-integration/postcommit-hook/${VSN}/postcommit_hook-${GIT_SHA}.tar.gz
+	tar czvf rel/postcommit_hook.${VSN}.tar.gz -C ebin postcommit_hook.beam
+	s3cmd put rel/postcommit_hook.${VSN}.tar.gz s3://spreedly-kafka-integration/postcommit_hook.${VSN}.tar.gz
 
 .PHONY:ls-releases
 ls-releases:
-	s3cmd ls s3://spreedly-kafka-integration/postcommit-hook/
+	s3cmd ls s3://spreedly-kafka-integration/postcommit_hook
 
 .PHONY:help
 help:
