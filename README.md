@@ -34,7 +34,7 @@ ERROR: compile failed while processing /Users/sdball/github/spreedly/kafka-riak-
 make: *** [compile] Error 1
 ```
 
-### Compile and install the post-commit hook
+### Compile and install the post-commit hook in development
 
 ```
 $ make
@@ -62,3 +62,20 @@ $ ./post-commit-hooks rolling-restart-riak
 Done! At this point any commits to your local core or id riak nodes should be
 calling the postcommit hook which will in turn try to forward the Riak objects
 to a separate OTP application.
+
+### Pushing a new release to S3
+
+First make sure that you've incremented the VSN in src/postcommit_hook.app.src.
+That's used to name the folder up on S3 that will hold the new release.
+
+If you haven't already installed it you'll need to install and configure s3cmd:
+
+```
+$ brew install s3cmd
+$ s3cmd --configure # use the "kafka-integration S3 credentials" from the 1Password dev vault
+```
+
+```
+$ make release # compiles, tars up the release, pushes to S3
+```
+

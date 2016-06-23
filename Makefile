@@ -4,6 +4,8 @@ CORE ?= $(HOME)/dev/core
 ID ?= $(HOME)/dev/id
 CORE_RIAK_BEAMS_DIR ?= $(CORE)/db/riak/$$n/tmp/beams
 ID_RIAK_BEAMS_DIR ?= $(ID)/db/riak/$$n/tmp/beams
+VSN = `grep vsn src/postcommit_hook.app.src | cut -d ',' -f 2 | grep -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"`
+GIT_SHA = `git log -1 --format=%H`
 
 all: compile
 
@@ -45,6 +47,16 @@ ls-install:
 		find $(ID_RIAK_BEAMS_DIR)/*; \
 	done
 
+.PHONY:release
+release: compile
+	mkdir -p rel
+	tar czvf rel/postcommit_hook-${GIT_SHA}.tar.gz -C ebin postcommit_hook.beam
+	s3cmd put rel/postcommit_hook-${GIT_SHA}.tar.gz s3://spreedly-kafka-integration/postcommit-hook/${VSN}/postcommit_hook-${GIT_SHA}.tar.gz
+
+.PHONY:ls-releases
+ls-releases:
+	s3cmd ls s3://spreedly-kafka-integration/postcommit-hook/
+
 .PHONY:help
 help:
 	@echo "You probably want to do something like this:"
@@ -52,4 +64,4 @@ help:
 	@echo "  2. Copy the compiled code to id and core:      make install"
 	@echo "  3. Set post-commit hook in id and core riak:   ./post-commit-hooks add"
 	@echo ""
-	@echo "Available commands: clean, distclean, compile, install, ls-install, help"
+	@echo "Available commands: clean, distclean, compile, install, ls-install, release, help"
