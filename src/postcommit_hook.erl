@@ -16,18 +16,18 @@ send_to_kafka_riak_commitlog(Object) ->
         Key = get_key(Object),
         Value = get_value(Object),
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        send_timing_to_statsd(Timing)
+        ok = send_timing_to_statsd(Timing)
     catch
         _Type:Exception ->
             error_logger:error_msg("Error running postcommit hook: ~p. Object: ~p", [Exception, Object]),
             throw(Exception)
     end.
 
+%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
 sync_to_commitlog(Action, Bucket, Key, Value) ->
-    %% gen_server:call({kafka_riak_commitlog, 'commitlog_1@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
     Remote = {?COMMITLOG_PROCESS, remote_node()},
     Body = {produce, Action, Bucket, Key, Value},
-    gen_server:call(Remote, Body).
+    ok = gen_server:call(Remote, Body).
 
 %% ---------------------------------------------------------------------------
 %% Internal
@@ -50,9 +50,19 @@ get_value(Object) ->
     riak_object:get_value(Object).
 
 send_timing_to_statsd(Timing) ->
-    {ok, Socket} = gen_udp:open(0, [binary]),
     StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
-    ok = gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage).
+
+    ok = case gen_udp:open(0, [binary]) of
+            {ok, Socket} ->
+                 case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage) of
+                     ok ->
+                         ok;
+                     Error ->
+                         {unable_to_send_to_statsd_socket, Error}
+                 end;
+            Error ->
+                {unable_to_open_statsd_socket, Error}
+         end.
 
 remote_node() ->
     [_Name, IP] = string:tokens(atom_to_list(node()), "@"),
