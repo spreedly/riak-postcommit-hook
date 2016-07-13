@@ -10,17 +10,29 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    try
-        Action = get_action(Object),
-        Bucket = get_bucket(Object),
-        Key = get_key(Object),
-        Value = get_value(Object),
-        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        ok = send_timing_to_statsd(Timing)
+    {Action, Bucket, Key, Value} = try
+        {get_action(Object), get_bucket(Object), get_key(Object), get_value(Object)}
     catch
-        _Type:Exception ->
-            error_logger:error_msg("Error running postcommit hook: ~p. Object: ~p", [Exception, Object]),
-            throw(Exception)
+        _:ExtractException ->
+            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.", [ExtractException, Object]),
+            throw(ExtractException)
+    end,
+
+    TimingResult = try
+        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
+        Timing
+    catch
+        _:SyncException ->
+            error_logger:warning_msg("[commitlog] Unable to sync data to commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
+            throw(SyncException)
+    end,
+
+    try
+        ok = send_timing_to_statsd(TimingResult)
+    catch
+        _:TimingException ->
+            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.", [TimingException, TimingResult, Bucket, Key]),
+            throw(TimingException)
     end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
