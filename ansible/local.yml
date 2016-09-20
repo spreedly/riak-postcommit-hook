@@ -1,0 +1,5 @@
+---
+- hosts: riak
+  tasks:
+    - debug: var=src_url
+    - debug: var=src_sha
