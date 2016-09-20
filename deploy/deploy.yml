@@ -1,0 +1,12 @@
+---
+# The deploy_handler will automatically:
+# * open all needed Firewall ports
+# * set the src_pkg and src_sha Ansible extra vars, based on the contents of
+#   the "ansible_vars" notary payload
+
+- hosts: riak
+  tasks:
+    - name: execute deploy script
+      command: "sudo /usr/local/sbin/deploy_riak_postcommit_hook {{ src_pkg }} {{ src_sha256 }}"
+      args:
+        warn: False
