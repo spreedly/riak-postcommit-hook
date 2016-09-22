@@ -23,29 +23,11 @@ compile: $(DEPS_DIR)
 
 .PHONY:install
 install:
-	@for n in 1 2 3 4; do \
-		find . -iname "*.beam" -exec cp {} $(CORE_RIAK_BEAMS_DIR) \; ; \
-		find . -iname "*.beam" -exec cp {} $(ID_RIAK_BEAMS_DIR) \; ; \
-		$(CORE)/db/riak/$$n/bin/riak-admin erl_reload > /dev/null \; ; \
-		$(ID)/db/riak/$$n/bin/riak-admin erl_reload > /dev/null \; ; \
-	done
-	@echo "Post-commit code copied to id and core."
+	cp ./ebin/postcommit_hook.beam $(HOME)/dev/dev-services/riak
 
 .PHONY:uninstall
 uninstall:
-	@for n in 1 2 3 4; do \
-		rm -rf $(CORE_RIAK_BEAMS_DIR)/*; \
-		rm -rf $(ID_RIAK_BEAMS_DIR)/*; \
-	done
-	@echo "Post-commit code deleted from id and core."
-
-.PHONY:ls-install
-ls-install:
-	@for n in 1 2 3 4; do \
-		echo; \
-		find $(CORE_RIAK_BEAMS_DIR)/*; \
-		find $(ID_RIAK_BEAMS_DIR)/*; \
-	done
+	rm $(HOME)/dev/dev-services/postcommit_hook.beam
 
 .PHONY:release
 release: compile
@@ -59,9 +41,7 @@ ls-releases:
 
 .PHONY:help
 help:
-	@echo "You probably want to do something like this:"
-	@echo "  1. Compile the post-commit hook:               make"
-	@echo "  2. Copy the compiled code to id and core:      make install"
-	@echo "  3. Set post-commit hook in id and core riak:   ./post-commit-hooks add"
+	@echo "If you're here to install the postcommit hook to your local Riak run"
+	@echo "  ./post-commit-hooks copy-to-dev-services"
 	@echo ""
-	@echo "Available commands: clean, distclean, compile, install, ls-install, release, help"
+	@echo "Otherwise? Your available commands: clean, distclean, compile, install, release, help"

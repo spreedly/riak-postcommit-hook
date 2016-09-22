@@ -1,8 +1,5 @@
 #!/bin/bash
 
-CORE=${CORE:-$HOME/dev/core}
-ID=${ID:-$HOME/dev/id}
-
 if ! command -v jq > /dev/null; then
   cat <<JQ
 jq command not found. Install with:
@@ -19,105 +16,49 @@ help() {
 Usage: post-commit-hooks [action]
 Actions:
   help                    show this help message
-  add                     add riak post-commit hooks to core and id
-  remove                  remove riak post-commit hooks from core and id
-  list                    list the current riak post-commit hooks for core and id
-  riak-rolling-restart    do a rolling restart of core and id riak nodes
-  riak                    execute riak command on core and id riak nodes
-  riak-admin              execute riak-admin command on core and id riak nodes
+  install                 compile and copy the postcommit hook to dev-services and setup the hook on each bucket
+  add                     add the postcommit hook to all riak buckets
+  remove                  remove the postcommit hook from all riak buckets
+  buckets                 list all of the riak buckets
+  list                    list all riak buckets and their postcommit hook setup
 HELP
 }
 
-riak_http_ports() {
-  _app=$1
-  grep --no-file "http," $_app/db/riak/*/etc/app.config | grep -o -E "[0-9]{4}"
+install() {
+  make
+  make install
+  add
+  echo "Now run: 'services restart' to install the postcommit hook into your development Riak."
 }
 
-riak_buckets() {
-  curl -s 127.0.0.1:$_port/riak\?buckets\=true | jq ".buckets[]" | sed -e 's/\//%2F/' | sed -e 's/"//g'
+buckets() {
+  curl -s 127.0.0.1:9150/riak\?buckets\=true | jq -r ".buckets[]" | sort
 }
 
 add() {
-  for _app in $CORE $ID; do
-    echo "Adding Riak post-commit hooks to $_app nodes"
-    update_buckets $_app '{"props":{"postcommit":[{"mod":"postcommit_hook","fun":"send_to_kafka_riak_commitlog"}]}}'
-  done
+  update_buckets '{"props":{"postcommit":[{"mod":"postcommit_hook","fun":"send_to_kafka_riak_commitlog"}]}}'
 }
 
 remove() {
-  for _app in $CORE $ID; do
-    echo "Removing Riak post-commit hooks from $_app nodes"
-    update_buckets $_app '{"props":{"postcommit":[]}}'
-  done
+  update_buckets '{"props":{"postcommit":[]}}'
 }
 
 list() {
-  for _app in $CORE $ID; do
-    echo "--- Riak post-commit hooks for $_app nodes ---"
-    riak_http_ports $_app | while read _port; do
-      riak_buckets $_port | while read _bucket; do
-        echo -n "$_bucket^"
-        curl -s 127.0.0.1:$_port/buckets/$_bucket/props | jq -c .props.postcommit
-      done
-    done
-  done | sed -e 's/%2F/\//g' | column -s "^" -t
-}
-
-riak-erl-reload() {
-  riak-admin erl_reload
-}
-
-riak-rolling-restart() {
-  for n in 1 2 3 4; do
-    echo "Restarting core riak node $n"
-    $CORE/db/riak/$n/bin/riak restart
-    $CORE/db/riak/$n/bin/riak-admin wait-for-service riak_kv riak_core_$n@127.0.0.1 2> /dev/null
-  done
-
-  for n in 1 2 3 4; do
-    echo "Restarting id riak node $n"
-    $ID/db/riak/$n/bin/riak restart
-    $ID/db/riak/$n/bin/riak-admin wait-for-service riak_kv riak_id_$n@127.0.0.1 2> /dev/null
-  done
-}
-
-riak() {
-  echo "Executing command \"riak $1\" on each riak node."
-  for n in 1 2 3 4; do
-    echo "core riak node $n"
-    $CORE/db/riak/$n/bin/riak $1
-  done
-
-  for n in 1 2 3 4; do
-    echo "id riak node $n"
-    $ID/db/riak/$n/bin/riak $1
-  done
-}
-
-riak-admin() {
-  echo "Executing command \"riak-admin $1\" on each riak node."
-  for n in 1 2 3 4; do
-    echo "core riak node $n"
-    $CORE/db/riak/$n/bin/riak-admin $1
-  done
-
-  for n in 1 2 3 4; do
-    echo "id riak node $n"
-    $ID/db/riak/$n/bin/riak-admin $1
-  done
+  buckets | while read _bucket; do
+    echo -n "$_bucket^"
+    _bucket=`echo $_bucket | sed -e 's/\//%2F/'`
+    curl -s 127.0.0.1:9150/buckets/$_bucket/props | jq -c .props.postcommit
+  done | column -s "^" -t
 }
 
 update_buckets() {
-  _app=$1
-  _data=$2
-
-  riak_http_ports $_app | while read _port; do
-    riak_buckets $_port | while read _bucket; do
-      curl -s 127.0.0.1:$_port/buckets/$_bucket/props \
-        -XPUT \
-        -H "Content-Type: application/json" \
-        -d $_data
-    done
+  _data=$1
+  buckets | while read _bucket; do
+    _bucket=`echo $_bucket | sed -e 's/\//%2F/'`
+    curl -s 127.0.0.1:9150/buckets/$_bucket/props \
+      -XPUT \
+      -H "Content-Type: application/json" \
+      -d $_data
   done
 }
 
