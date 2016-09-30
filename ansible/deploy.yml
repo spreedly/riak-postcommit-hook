@@ -7,4 +7,6 @@
 - hosts: riak
   tasks:
     - name: execute deploy script
-      command: "sudo /usr/local/sbin/deploy_riak_postcommit_hook {{ src_pkg }} {{ src_sha }}" warn=False
+      command: "sudo /usr/local/sbin/deploy_riak_postcommit_hook {{ src_pkg }} {{ src_sha }}"
+      args:
+        warn: False
