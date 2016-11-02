@@ -53,6 +53,10 @@ release: compile
 	tar czvf rel/postcommit_hook.${VSN}-${SHA}.tar.gz -C ebin postcommit_hook.beam
 	s3cmd put rel/postcommit_hook.${VSN}-${SHA}.tar.gz s3://spreedly-kafka-integration/postcommit_hook.${VSN}-${SHA}.tar.gz
 
+.PHONY:deploy
+deploy:
+	./deploy.sh
+
 .PHONY:ls-releases
 ls-releases:
 	s3cmd ls s3://spreedly-kafka-integration/postcommit_hook
