@@ -2,7 +2,7 @@
 # The deploy_handler will automatically:
 # * open all needed Firewall ports
 # * set the src_pkg and src_sha Ansible extra vars, based on the contents of
-#   the current_release file
+#   the "ansible_vars" notary payload
 
 - hosts: riak
   tasks:
