@@ -27,7 +27,7 @@ install:
 
 .PHONY:uninstall
 uninstall:
-	rm $(HOME)/dev/dev-services/postcommit_hook.beam
+	rm $(HOME)/dev/dev-services/riak/postcommit_hook.beam
 
 .PHONY:release
 release: compile
