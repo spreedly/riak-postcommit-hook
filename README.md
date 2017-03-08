@@ -6,9 +6,7 @@ A postcommit hook for Riak that forwards Riak objects to an OTP application for 
 
 ### Install Riak's required version of Erlang
 
-Riak requires included code to be compiled with `Erlang R16B02-basho8`. Follow
-the steps in http://docs.basho.com/riak/latest/ops/building/installing/erlang/
-to get the correct Erlang version installed.
+Riak requires included code to be compiled with `Erlang R16B02-basho8`. Follow the steps in http://docs.basho.com/riak/latest/ops/building/installing/erlang/ to get the correct Erlang version installed.
 
 After installation you'll be able to activate and deactivate the Riak version of Erlang.
 
@@ -19,54 +17,44 @@ $HOME/erlang/R16B02-basho8/deactivate
 
 I suggest making aliases for those commands so switching Erlang versions is easy.
 
-If you don't have the correct Erlang version active then `make` will throw an
-error instead of compiling with the incompatible version.
+If you don't have the correct Erlang version active then `make` will throw an error instead of compiling with the incompatible version.
 
 e.g.
 
 ```bash
+$ make
 ./rebar get-deps
-==> kafka-riak-commitlog (get-deps)
+==> riak-postcommit-hook (get-deps)
 ./rebar compile
-==> kafka-riak-commitlog (compile)
+==> riak-postcommit-hook (compile)
 ERROR: OTP release 18 does not match required regex R16B02_basho8
-ERROR: compile failed while processing /Users/sdball/github/spreedly/kafka-riak-commitlog: rebar_abort
+ERROR: compile failed while processing /Users/sdball/github/spreedly/riak-postcommit-hook: rebar_abort
 make: *** [compile] Error 1
 ```
 
-### Compile and install the post-commit hook in development
+### Compile a new version of the postcommit hook
+
+This project has a `make` configuration for compiling. You only need to ensure that your running the `R16B02` Erlang version and then run make.
 
 ```
 $ make
-$ make install
 ```
 
-### Check that the code is in place
+### Run the postcommit hook in Riak
 
-```
-$ make ls-install
-```
+You'll need a running Riak instance configured with an added path for custom BEAM files (such as our dev-services Riak VM). Place the BEAM file in the configured path in Riak and then configure buckets to call the Erlang module/function: `postcommit_hook:send_to_kafka_riak_commitlog`.
 
-### Configure riak to call the post-commit hook
+#### For the dev-services Riak VM:
 
-```
-$ ./post-commit-hooks add
-```
+1. Copy the newly compiled `./ebin/postcommit_hook.beam` file to `dev-services/riak/postcommit_hook.beam`
+    - `make install` will do this for you if dev-services is located at `~/dev/dev-services`
+2. Run `vagrant provision riak` in the dev-services directory
 
-### Restart local riak nodes
+The dev-services Riak provisioning scripts will place the beam file in the proper location and restart Riak. The dev-services Riak is already configured to call this postcommit hook with data writes to any bucket.
 
-```
-$ ./post-commit-hooks rolling-restart-riak
-```
+### Push a new release to S3
 
-Done! At this point any commits to your local core or id riak nodes should be
-calling the postcommit hook which will in turn try to forward the Riak objects
-to a separate OTP application.
-
-### Pushing a new release to S3
-
-First make sure that you've incremented the VSN in src/postcommit_hook.app.src.
-That's used to name the folder up on S3 that will hold the new release.
+Make sure that you've incremented the VSN in src/postcommit_hook.app.src. That's used to name the folder up on S3 that will hold the new release.
 
 If you haven't already installed it you'll need to install and configure s3cmd:
 
