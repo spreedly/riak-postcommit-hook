@@ -1,9 +1,5 @@
 EBIN_DIR=ebin
 DEPS_DIR=deps
-CORE ?= $(HOME)/dev/core
-ID ?= $(HOME)/dev/id
-CORE_RIAK_BEAMS_DIR ?= $(CORE)/db/riak/$$n/tmp/beams
-ID_RIAK_BEAMS_DIR ?= $(ID)/db/riak/$$n/tmp/beams
 VSN = `grep vsn src/postcommit_hook.app.src | cut -d ',' -f 2 | grep -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"`
 SHA = `git log -1 --format="%h"`
 
