@@ -6,16 +6,24 @@ A postcommit hook for Riak that forwards Riak objects to an OTP application for 
 
 ### Install Riak's required version of Erlang
 
-Riak requires included code to be compiled with `Erlang R16B02-basho8`. Follow the steps in http://docs.basho.com/riak/latest/ops/building/installing/erlang/ to get the correct Erlang version installed.
+Riak requires included code to be compiled with `Erlang R16B02-basho8`.
+Follow the steps in
+http://docs.basho.com/riak/latest/ops/building/installing/erlang/ to get
+the correct Erlang version installed. The older version of Erlang do not
+build on later versions of macOS, so it's likely easier to build on our
+`elixir-build-machine`.
+
+```
+$ vagrant ssh elixir-build-machine
+$ ./kerl install R16B02-basho8 ~/erlang/R16B02-basho8
+$ git clone git@github.com:spreedly/riak-postcommit-hook.git
+```
 
 After installation you'll be able to activate and deactivate the Riak version of Erlang.
 
 ```
-$HOME/erlang/R16B02-basho8/activate
-$HOME/erlang/R16B02-basho8/deactivate
+. ~/erlang/R16B02-basho8/activate
 ```
-
-I suggest making aliases for those commands so switching Erlang versions is easy.
 
 If you don't have the correct Erlang version active then `make` will throw an error instead of compiling with the incompatible version.
 
@@ -46,11 +54,26 @@ You'll need a running Riak instance configured with an added path for custom BEA
 
 #### For the dev-services Riak VM:
 
-1. Copy the newly compiled `./ebin/postcommit_hook.beam` file to `dev-services/riak/postcommit_hook.beam`
-    - `make install` will do this for you if dev-services is located at `~/dev/dev-services`
-2. Run `vagrant provision riak` in the dev-services directory
+1. Copy the new beam file from the build machine to your local machine:
 
-The dev-services Riak provisioning scripts will place the beam file in the proper location and restart Riak. The dev-services Riak is already configured to call this postcommit hook with data writes to any bucket.
+```
+$ pwd
+.../dev/dev-services
+$ scp elixir-build-machine:riak-postcommit-hook/ebin/postcommit_hook.beam riak
+```
+
+2. Copy the beam file to the Riak directory on the `core` VM:
+
+```
+$ sudo cp /vagrant/riak/postcommit_hook.beam /opt/beams/
+```
+
+3. Restart Riak
+
+```
+$ sudo riak stop
+$ sudo riak start
+```
 
 ### Push a new release to S3
 
