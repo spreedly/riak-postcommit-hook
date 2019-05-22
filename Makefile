@@ -37,7 +37,7 @@ ls-releases:
 
 .PHONY:help
 help:
-	@echo "If you're here to install the postcommit hook to your local Riak run"
-	@echo "  ./post-commit-hooks copy-to-dev-services"
+	@echo "If you're here to install the postcommit hook to your local dev-services Riak run"
+	@echo "  make install"
 	@echo ""
 	@echo "Otherwise? Your available commands: clean, distclean, compile, install, release, help"

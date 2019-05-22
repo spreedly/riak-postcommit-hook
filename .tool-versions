@@ -1,0 +1,6 @@
+#
+# Installation:
+#   $ export OTP_GITHUB_URL="https://github.com/basho/otp"
+#   $ asdf install erlang R16B02_basho8
+#
+erlang R16B02_basho8

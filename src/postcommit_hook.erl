@@ -20,6 +20,7 @@ send_to_kafka_riak_commitlog(Object) ->
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
+        error_logger:info_msg("[commitlog] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
         Timing
     catch
         _:SyncException ->
@@ -77,7 +78,11 @@ send_timing_to_statsd(Timing) ->
          end.
 
 remote_node() ->
-    [_Name, IP] = string:tokens(atom_to_list(node()), "@"),
-    Remote = "commitlog" ++ "@" ++ IP,
+    Hostname = case os:getenv("COMMITLOG_HOSTNAME") of
+                   false -> [_Name, Host] = string:tokens(atom_to_list(node()), "@"),
+                            Host;
+                   EnvHost -> EnvHost
+               end,
+    Remote = "commitlog" ++ "@" ++ Hostname,
     list_to_atom(Remote).
 
