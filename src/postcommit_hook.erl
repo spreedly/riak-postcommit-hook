@@ -33,7 +33,7 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        error_logger:info_msg("[commitlog] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+        error_logger:info_msg("   [commitlog] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
                               [timestamp()-StartTime, RetryCount, Bucket, Key]),
         Timing
     catch
@@ -91,23 +91,27 @@ send_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
             seed_if(RetryCount == 0),
             NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
             send_with_retries(Object, StartTime, RetryCount + 1, NextRetryDelay);
-        {e_sync, _} ->
-            retries_exceeded;
+        {e_sync, SyncException} ->
+            SyncException;
         E ->
             E
     end.
 
+%% Seeding is necessary to avoid a race condition where multiple postcommit-
+%% hook processes automatically seed the RNG in the same manner and all use the
+%% same seed, which defeats the purpose of adding jitter.
 seed_if(true) ->
     {_, Seconds, MicroSecs} = now(),
     random:seed(erlang:phash2(self()), Seconds, MicroSecs);
 seed_if(false) ->
     no_op.
 
-%% Returns N ± N*Percent
-jitter(N, Percent) when 0 < Percent andalso Percent < 1 ->
+%% Returns N ± N*Percent. For example, `jitter(100, 0.1)` returns a number in
+%% the interval [90, 110].
+jitter(N, Percent) when 0.0 =< Percent andalso Percent =< 1.0 ->
     round(N * (1.0 - Percent + (random:uniform() * Percent * 2.0)));
 jitter(_N, _Percent) ->
-    throw({badarg, "Percent must be between 0.0 and 1.0 inclusive"}).
+    throw({badarg, "Percent must be in the interval [0.0, 1.0]"}).
 
 get_action(Object) ->
     Metadata = riak_object:get_metadata(Object),
