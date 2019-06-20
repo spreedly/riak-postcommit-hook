@@ -1,39 +1,60 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
+-export([attempt_send_to_kafka_riak_commitlog/3, send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
 
 -define(COMMITLOG_PROCESS, kafka_riak_commitlog).
 -define(STATSD_HOST, "127.0.0.1").
 -define(STATSD_PORT, 8125).
+
+-define(INITIAL_RETRY_DELAY_MS, 100).
+-define(MAX_RETRIES, 6).
+-define(RETRY_DELAY_JITTER, 0.15).
+-define(RETRY_DELAY_MULTIPLIER, 2.0).
 
 %% ---------------------------------------------------------------------------
 %% API
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
+    % StartTime = timestamp(),
+    % send_with_retries(Object, timestamp(), 0, ?INITIAL_RETRY_DELAY_MS)
+    Sender = spawn(fun() -> sender() end),
+    Sender ! {self(), Object},
+    ok.
+
+attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
     {Action, Bucket, Key, Value} = try
         {get_action(Object), get_bucket(Object), get_key(Object), get_value(Object)}
     catch
         _:ExtractException ->
-            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.", [ExtractException, Object]),
-            throw(ExtractException)
+            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~s. Object: ~s.",
+                                     [ExtractException, Object]),
+            throw({e_extract, ExtractException})
     end,
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        error_logger:info_msg("[commitlog] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
+        error_logger:info_msg("[commitlog] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+                              [timestamp()-StartTime, RetryCount, Bucket, Key]),
         Timing
     catch
         _:SyncException ->
-            error_logger:warning_msg("[commitlog] Unable to sync data to commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
-            throw(SyncException)
+            {SyncErrorReason, _} = SyncException,
+            Message = case RetryCount < ?MAX_RETRIES of
+                      true  -> "Unable to sync data to commitlog";
+                      false -> "FAILED to sync data to commitlog"
+                  end,
+            error_logger:warning_msg("[commitlog] ~s: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+                                     [Message, SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
+            throw({e_sync, SyncException})
     end,
 
     try
         ok = send_timing_to_statsd(TimingResult)
     catch
         _:TimingException ->
-            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.", [TimingException, TimingResult, Bucket, Key]),
-            throw(TimingException)
+            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. ~s|~s",
+                                     [TimingException, TimingResult, Bucket, Key]),
+            throw({e_timing, TimingException})
     end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
@@ -45,6 +66,48 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
 %% ---------------------------------------------------------------------------
 %% Internal
 %% ---------------------------------------------------------------------------
+
+%% https://gist.github.com/DimitryDushkin/5532071
+timestamp() ->
+  {Mega, Sec, Micro} = os:timestamp(),
+  (Mega*1000000 + Sec)*1000 + round(Micro/1000).
+
+sender() ->
+    receive
+        {_From, Object} ->
+            StartTime = timestamp(),
+            RetryCount = 0,
+            RetryDelay = jitter(?INITIAL_RETRY_DELAY_MS, ?RETRY_DELAY_JITTER),
+            send_with_retries(Object, StartTime, RetryCount, RetryDelay)
+    end.
+
+%% TODO some kind of circuit breaker thing in case Commitlog is down for an
+%%      extended period of time.
+send_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
+    try attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount)
+    catch
+        {e_sync, _} when RetryCount < ?MAX_RETRIES ->
+            timer:sleep(RetryDelay),
+            seed_if(RetryCount == 0),
+            NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
+            send_with_retries(Object, StartTime, RetryCount + 1, NextRetryDelay);
+        {e_sync, _} ->
+            retries_exceeded;
+        E ->
+            E
+    end.
+
+seed_if(true) ->
+    {_, Seconds, MicroSecs} = now(),
+    random:seed(erlang:phash2(self()), Seconds, MicroSecs);
+seed_if(false) ->
+    no_op.
+
+%% Returns N ± N*Percent
+jitter(N, Percent) when 0 < Percent andalso Percent < 1 ->
+    round(N * (1.0 - Percent + (random:uniform() * Percent * 2.0)));
+jitter(_N, _Percent) ->
+    throw({badarg, "Percent must be between 0.0 and 1.0 inclusive"}).
 
 get_action(Object) ->
     Metadata = riak_object:get_metadata(Object),
