@@ -15,10 +15,7 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    % StartTime = timestamp(),
-    % send_with_retries(Object, timestamp(), 0, ?INITIAL_RETRY_DELAY_MS)
-    Sender = spawn(fun() -> sender() end),
-    Sender ! {self(), Object},
+    send_with_retries(Object, timestamp(), 0, ?INITIAL_RETRY_DELAY_MS),
     ok.
 
 attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
@@ -26,14 +23,14 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
         {get_action(Object), get_bucket(Object), get_key(Object), get_value(Object)}
     catch
         _:ExtractException ->
-            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~s. Object: ~s.",
+            error_logger:warning_msg("[postcommit-hook] Unable to extract data from Riak object: ~s. Object: ~s.",
                                      [ExtractException, Object]),
             throw({e_extract, ExtractException})
     end,
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        error_logger:info_msg("   [commitlog] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+        error_logger:info_msg("   [postcommit-hook] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
                               [timestamp()-StartTime, RetryCount, Bucket, Key]),
         Timing
     catch
@@ -43,7 +40,7 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
                       true  -> "Unable to sync data to commitlog";
                       false -> "FAILED to sync data to commitlog"
                   end,
-            error_logger:warning_msg("[commitlog] ~s: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+            error_logger:warning_msg("[postcommit-hook] ~s: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
                                      [Message, SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
             throw({e_sync, SyncException})
     end,
@@ -52,7 +49,7 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
         ok = send_timing_to_statsd(TimingResult)
     catch
         _:TimingException ->
-            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. ~s|~s",
+            error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~p. Timing: ~p. ~s|~s",
                                      [TimingException, TimingResult, Bucket, Key]),
             throw({e_timing, TimingException})
     end.
@@ -72,17 +69,6 @@ timestamp() ->
   {Mega, Sec, Micro} = os:timestamp(),
   (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
-sender() ->
-    receive
-        {_From, Object} ->
-            StartTime = timestamp(),
-            RetryCount = 0,
-            RetryDelay = jitter(?INITIAL_RETRY_DELAY_MS, ?RETRY_DELAY_JITTER),
-            send_with_retries(Object, StartTime, RetryCount, RetryDelay)
-    end.
-
-%% TODO some kind of circuit breaker thing in case Commitlog is down for an
-%%      extended period of time.
 send_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
     try attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount)
     catch
