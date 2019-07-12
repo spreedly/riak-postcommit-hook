@@ -77,7 +77,7 @@ send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount, RetryDe
                 retry_enabled ->
                     NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
                     send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount + 1, NextRetryDelay);
-                retry_disabled ->
+                _RetryDisabledOrQueryTimeout ->
                     log_sync_failure(SyncException, Object, StartTime, RetryCount)
             end;
         {e_sync, SyncException} ->
