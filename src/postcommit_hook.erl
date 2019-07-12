@@ -28,26 +28,26 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
             throw({e_extract, ExtractException})
     end,
 
-    TimingResult = try
-        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
+    SyncStartTime = microtimestamp(),
+    try
+        sync_to_commitlog(Action, Bucket, Key, Value),
         error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
-                              [timestamp()-StartTime, RetryCount, Bucket, Key]),
-        Timing
+                              [timestamp()-StartTime, RetryCount, Bucket, Key])
     catch
         _:SyncException ->
             {SyncErrorReason, _} = SyncException,
             error_logger:info_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
-                                     [SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
+                                  [SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
             throw({e_sync, SyncException})
-    end,
-
-    try
-        ok = send_timing_to_statsd(TimingResult)
-    catch
-        _:TimingException ->
-            error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~p. Timing: ~p. ~s|~s",
-                                     [TimingException, TimingResult, Bucket, Key]),
-            throw({e_timing, TimingException})
+    after
+        SyncTime = microtimestamp() - SyncStartTime,
+        try
+            ok = send_timing_to_statsd(SyncTime)
+        catch
+            _:TimingException ->
+                error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~p. Timing: ~p. ~s|~s",
+                                         [TimingException, SyncTime, Bucket, Key])
+        end
     end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
@@ -62,8 +62,11 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
 
 %% https://gist.github.com/DimitryDushkin/5532071
 timestamp() ->
+    round(microtimestamp()/1000).
+
+microtimestamp() ->
     {Mega, Sec, Micro} = os:timestamp(),
-    (Mega*1000000 + Sec)*1000 + round(Micro/1000).
+    (Mega*1000000 + Sec)*1000000 + Micro.
 
 send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
     try
