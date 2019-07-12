@@ -30,13 +30,13 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        error_logger:info_msg("   [postcommit-hook] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+        error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Time: ~5.. B ms. Retries: ~p. ~s|~s",
                               [timestamp()-StartTime, RetryCount, Bucket, Key]),
         Timing
     catch
         _:SyncException ->
             {SyncErrorReason, _} = SyncException,
-            error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+            error_logger:info_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
                                      [SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
             throw({e_sync, SyncException})
     end,
@@ -121,7 +121,7 @@ ensure_retry_manager_is_registered() ->
     end.
 
 start_retry_manager() ->
-    error_logger:info_msg("   [pch-retry-manager] Retry manager started."),
+    error_logger:info_msg("[pch-retry-manager] Retry manager started."),
     retry_manager_loop(retry_enabled).
 
 retry_manager_loop(RetryState) ->
@@ -135,7 +135,7 @@ retry_manager_loop(RetryState) ->
                                     error_logger:warning_msg("[pch-retry-manager] Retry disabled."),
                                     retry_disabled;
                                 {retry_disabled, success} ->
-                                    error_logger:info_msg("  [pch-retry-manager] Retry enabled."),
+                                    error_logger:info_msg("[pch-retry-manager] Retry enabled."),
                                     retry_enabled;
                                 _Else ->
                                     RetryState
