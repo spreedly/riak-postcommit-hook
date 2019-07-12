@@ -62,8 +62,8 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
 
 %% https://gist.github.com/DimitryDushkin/5532071
 timestamp() ->
-  {Mega, Sec, Micro} = os:timestamp(),
-  (Mega*1000000 + Sec)*1000 + round(Micro/1000).
+    {Mega, Sec, Micro} = os:timestamp(),
+    (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
 send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
     try
@@ -88,7 +88,7 @@ send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount, RetryDe
             E
     end.
 
-log_sync_failure(SyncException, Object, StartTime,RetryCount) ->
+log_sync_failure(SyncException, Object, StartTime, RetryCount) ->
     {SyncErrorReason, _} = SyncException,
     {Bucket, Key} = {get_bucket(Object), get_key(Object)},
     error_logger:warning_msg("[postcommit-hook] FAILED to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
@@ -179,15 +179,15 @@ send_timing_to_statsd(Timing) ->
     StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
 
     ok = case gen_udp:open(0, [binary]) of
-            {ok, Socket} ->
+             {ok, Socket} ->
                  case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage) of
                      ok ->
                          ok;
                      Error ->
                          {unable_to_send_to_statsd_socket, Error}
                  end;
-            Error ->
-                {unable_to_open_statsd_socket, Error}
+             Error ->
+                 {unable_to_open_statsd_socket, Error}
          end.
 
 remote_node() ->
