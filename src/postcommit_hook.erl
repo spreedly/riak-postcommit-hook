@@ -101,7 +101,7 @@ query_retry_state() ->
             RetryState
     after
         1000 ->
-            retry_manager_query_timeout
+            query_timeout
     end.
 
 send_to_retry_manager(Message) ->
