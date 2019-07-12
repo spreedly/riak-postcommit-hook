@@ -15,7 +15,7 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    send_with_retries(Object, timestamp(), 0, ?INITIAL_RETRY_DELAY_MS),
+    send_to_kafka_riak_commitlog_with_retries(Object, timestamp(), 0, ?INITIAL_RETRY_DELAY_MS),
     ok.
 
 attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
@@ -36,12 +36,8 @@ attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount) ->
     catch
         _:SyncException ->
             {SyncErrorReason, _} = SyncException,
-            Message = case RetryCount < ?MAX_RETRIES of
-                      true  -> "Unable to sync data to commitlog";
-                      false -> "FAILED to sync data to commitlog"
-                  end,
-            error_logger:warning_msg("[postcommit-hook] ~s: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
-                                     [Message, SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
+            error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+                                     [SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]),
             throw({e_sync, SyncException})
     end,
 
@@ -69,18 +65,82 @@ timestamp() ->
   {Mega, Sec, Micro} = os:timestamp(),
   (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
-send_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
-    try attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount)
+send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount, RetryDelay) ->
+    try
+        attempt_send_to_kafka_riak_commitlog(Object, StartTime, RetryCount),
+        send_to_retry_manager({self(), result, success})
     catch
-        {e_sync, _} when RetryCount < ?MAX_RETRIES ->
+        {e_sync, SyncException} when RetryCount < ?MAX_RETRIES ->
             timer:sleep(RetryDelay),
             seed_if(RetryCount == 0),
-            NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
-            send_with_retries(Object, StartTime, RetryCount + 1, NextRetryDelay);
+            case query_retry_state() of
+                retry_enabled ->
+                    NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
+                    send_to_kafka_riak_commitlog_with_retries(Object, StartTime, RetryCount + 1, NextRetryDelay);
+                retry_disabled ->
+                    log_sync_failure(SyncException, Object, StartTime, RetryCount)
+            end;
         {e_sync, SyncException} ->
+            log_sync_failure(SyncException, Object, StartTime, RetryCount),
+            send_to_retry_manager({self(), result, failure}),
             SyncException;
         E ->
             E
+    end.
+
+log_sync_failure(SyncException, Object, StartTime,RetryCount) ->
+    {SyncErrorReason, _} = SyncException,
+    {Bucket, Key} = {get_bucket(Object), get_key(Object)},
+    error_logger:warning_msg("[postcommit-hook] FAILED to sync data to Commitlog: ~p. Time: ~5.. B ms. Retries: ~p. ~s|~s",
+                             [SyncErrorReason, timestamp()-StartTime, RetryCount, Bucket, Key]).
+
+query_retry_state() ->
+    send_to_retry_manager({self(), query, retry_state}),
+    receive
+        {retry_state, RetryState} ->
+            RetryState
+    after
+        1000 ->
+            retry_manager_query_timeout
+    end.
+
+send_to_retry_manager(Message) ->
+    ensure_retry_manager_is_registered(),
+    retry_manager ! Message.
+
+ensure_retry_manager_is_registered() ->
+    case whereis(retry_manager) of
+        undefined ->
+            Pid = spawn(fun() -> start_retry_manager() end),
+            try register(retry_manager, Pid)
+            catch _:badarg -> ensure_retry_manager_is_registered()
+            end,
+            Pid;
+        Pid ->
+            Pid
+    end.
+
+start_retry_manager() ->
+    error_logger:info_msg("   [pch-retry-manager] Retry manager started."),
+    retry_manager_loop(retry_enabled).
+
+retry_manager_loop(RetryState) ->
+    receive
+        {From, query, retry_state} ->
+            From ! {retry_state, RetryState},
+            retry_manager_loop(RetryState);
+        {_, result, Result} ->
+            NewRetryState = case {RetryState, Result} of
+                                {retry_enabled, failure} ->
+                                    error_logger:warning_msg("[pch-retry-manager] Retry disabled."),
+                                    retry_disabled;
+                                {retry_disabled, success} ->
+                                    error_logger:info_msg("  [pch-retry-manager] Retry enabled."),
+                                    retry_enabled;
+                                _Else ->
+                                    RetryState
+                            end,
+            retry_manager_loop(NewRetryState)
     end.
 
 %% Seeding is necessary to avoid a race condition where multiple postcommit-
