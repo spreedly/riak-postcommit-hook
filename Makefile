@@ -3,7 +3,7 @@ DEPS_DIR=deps
 VSN = `grep vsn src/postcommit_hook.app.src | cut -d ',' -f 2 | grep -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"`
 SHA = `git log -1 --format="%h"`
 
-all: compile
+all: compile test
 
 clean:
 	rm -rf $(EBIN_DIR)
@@ -15,7 +15,13 @@ $(DEPS_DIR):
 	./rebar get-deps
 
 compile: $(DEPS_DIR)
+	@sed -i '.backup' -e 's/^{deps,.*/{deps, []}./' rebar.config
 	./rebar compile
+	@mv rebar.config.backup rebar.config
+
+.PHONY:test
+test:
+	./rebar eunit
 
 .PHONY:install
 install:
@@ -40,4 +46,4 @@ help:
 	@echo "If you're here to install the postcommit hook to your local dev-services Riak run"
 	@echo "  make install"
 	@echo ""
-	@echo "Otherwise? Your available commands: clean, distclean, compile, install, release, help"
+	@echo "Otherwise? Your available commands: clean, distclean, compile, test, install, release, help"
