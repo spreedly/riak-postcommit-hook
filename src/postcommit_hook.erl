@@ -74,10 +74,10 @@ send_timing_to_statsd(Timing) ->
                 ok ->
                     ok;
                 {error, Reason} ->
-                    {error, unable_to_send_to_statsd_socket, Reason}
+                    {error, {unable_to_send_to_statsd_socket, Reason}}
             end;
         {error, Reason} ->
-            {error, unable_to_open_statsd_socket, Reason}
+            {error, {unable_to_open_statsd_socket, Reason}}
     end.
 
 remote_node() ->
@@ -138,7 +138,7 @@ send_timing_to_statsd_test_() ->
      [{"Returns error if unable to open socket",
        fun() ->
                meck:expect(gen_udp, open, 2, {error, reason}),
-               ?assertEqual({error, unable_to_open_statsd_socket, reason},
+               ?assertMatch({error, {unable_to_open_statsd_socket, _}},
                             send_timing_to_statsd(0)),
                ?assert(meck:validate(gen_udp))
        end},
@@ -146,7 +146,7 @@ send_timing_to_statsd_test_() ->
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, {error, reason}),
-               ?assertEqual({error, unable_to_send_to_statsd_socket, reason},
+               ?assertMatch({error, {unable_to_send_to_statsd_socket, _}},
                             send_timing_to_statsd(0)),
                ?assert(meck:validate(gen_udp))
        end},
