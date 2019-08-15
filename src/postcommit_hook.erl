@@ -18,11 +18,11 @@ send_to_kafka_riak_commitlog(Object) ->
     SyncStartMicrotime = microtimestamp(),
     try
         ok = ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value),
-        error_logger:info_msg("[commitlog] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
+        error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
         ok
     catch
         _:SyncException ->
-            error_logger:warning_msg("[commitlog] Unable to sync data to commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
+            error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
             throw(SyncException)
     after
         SyncMicrotime = microtimestamp() - SyncStartMicrotime,
@@ -30,7 +30,7 @@ send_to_kafka_riak_commitlog(Object) ->
             ok = send_timing_to_statsd(SyncMicrotime)
         catch
             _:TimingException ->
-                error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.",
+                error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.",
                                          [TimingException, SyncMicrotime, Bucket, Key]),
                 throw(TimingException)
         end
@@ -53,7 +53,7 @@ riak_object_components(Object) ->
         {ok, {Action, Bucket, Key, Value}}
     catch
         Class:Error ->
-            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.",
+            error_logger:warning_msg("[postcommit-hook] Unable to extract data from Riak object: ~p. Object: ~p.",
                                      [{Class, Error}, Object]),
             {error, {Class, Error}}
     end.
