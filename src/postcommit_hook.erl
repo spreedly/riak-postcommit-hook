@@ -135,14 +135,14 @@ send_timing_to_statsd_test_() ->
     {foreach,
      fun() -> meck:new(gen_udp, [unstick]) end,
      fun(_) -> meck:unload(gen_udp) end,
-     [{"unable to open socket",
+     [{"Returns error if unable to open socket",
        fun() ->
                meck:expect(gen_udp, open, 2, {error, reason}),
                ?assertEqual({error, unable_to_open_statsd_socket, reason},
                             send_timing_to_statsd(0)),
                ?assert(meck:validate(gen_udp))
        end},
-      {"unable to send",
+      {"Returns error if unable to send on socket",
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, {error, reason}),
@@ -150,7 +150,7 @@ send_timing_to_statsd_test_() ->
                             send_timing_to_statsd(0)),
                ?assert(meck:validate(gen_udp))
        end},
-      {"successful send",
+      {"Returns ok if send is successful",
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, ok),
@@ -159,11 +159,11 @@ send_timing_to_statsd_test_() ->
        end}]}.
 
 remote_node_test_() ->
-    [{"COMMITLOG_HOSTNAME not set",
+    [{"Uses node host name if COMMITLOG_HOSTNAME env var is not set",
       fun() ->
               ?assertEqual('commitlog@nohost', remote_node())
       end},
-     {"COMMITLOG_HOSTNAME set",
+     {"Uses COMMITLOG_HOSTNAME env var if set",
       fun() ->
               os:putenv("COMMITLOG_HOSTNAME", "commitlog.test"),
               ?assertEqual('commitlog@commitlog.test', remote_node())
