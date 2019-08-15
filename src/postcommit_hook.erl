@@ -15,23 +15,28 @@
 send_to_kafka_riak_commitlog(Object) ->
     {ok, {Action, Bucket, Key, Value}} = ?MODULE:riak_object_components(Object),
 
-    TimingResult = try
-        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
+    SyncStartMicrotime = microtimestamp(),
+    try
+        ok = ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value),
         error_logger:info_msg("[commitlog] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
-        Timing
+        ok
     catch
         _:SyncException ->
             error_logger:warning_msg("[commitlog] Unable to sync data to commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
             throw(SyncException)
+    after
+        SyncMicrotime = microtimestamp() - SyncStartMicrotime,
+        try
+            ok = send_timing_to_statsd(SyncMicrotime)
+        catch
+            _:TimingException ->
+                error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.",
+                                         [TimingException, SyncMicrotime, Bucket, Key]),
+                throw(TimingException)
+        end
     end,
+    ok.
 
-    try
-        ok = send_timing_to_statsd(TimingResult)
-    catch
-        _:TimingException ->
-            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.", [TimingException, TimingResult, Bucket, Key]),
-            throw(TimingException)
-    end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
 sync_to_commitlog(Action, Bucket, Key, Value) ->
@@ -65,6 +70,9 @@ get_action(Object) ->
     end.
 
 
+microtimestamp() ->
+    {Mega, Sec, Micro} = os:timestamp(),
+    (Mega*1000000 + Sec)*1000000 + Micro.
 
 send_timing_to_statsd(Timing) ->
     StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
