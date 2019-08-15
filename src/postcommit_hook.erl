@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
+-export([send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1, do_call_commitlog/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -12,42 +12,71 @@
 %% API
 %% ---------------------------------------------------------------------------
 
-send_to_kafka_riak_commitlog(Object) ->
-    {Action, Bucket, Key, Value} = try
-        {get_action(Object), get_bucket(Object), get_key(Object), get_value(Object)}
-    catch
-        _:ExtractException ->
-            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.", [ExtractException, Object]),
-            throw(ExtractException)
-    end,
-
-    TimingResult = try
-        {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
-        error_logger:info_msg("[commitlog] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
-        Timing
-    catch
-        _:SyncException ->
-            error_logger:warning_msg("[commitlog] Unable to sync data to commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
-            throw(SyncException)
-    end,
-
-    try
-        ok = send_timing_to_statsd(TimingResult)
-    catch
-        _:TimingException ->
-            error_logger:warning_msg("[commitlog] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.", [TimingException, TimingResult, Bucket, Key]),
-            throw(TimingException)
+send_to_kafka_riak_commitlog(RiakObject) ->
+    case build_commitlog_request(RiakObject) of
+        {ok, Request} ->
+            Call = {{?COMMITLOG_PROCESS, commitlog_node()}, Request},
+            {MicroTime, Result} = timer:tc(?MODULE, send_to_commitlog, [Call]),
+            Time = round(MicroTime / 1000),
+            case Result of
+                ok ->
+                    log(info, "Send to Commitlog succeeded. Time: ~w ms.",
+                        [Time], Call);
+                {error, Error} ->
+                    log(warn, "Send to Commitlog failed. Time: ~w ms. Error: ~w.",
+                        [Time, Error], Call)
+            end,
+            Result;
+        {error, RiakObjectError} ->
+            log(warn, "Unable to extract data from Riak object '~w': ~w.",
+                [RiakObject, RiakObjectError]),
+            {error, RiakObjectError}
     end.
 
-%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
-sync_to_commitlog(Action, Bucket, Key, Value) ->
-    ServerRef = {?COMMITLOG_PROCESS, remote_node()},
-    Request = {produce, Action, Bucket, Key, Value},
-    ok = gen_server:call(ServerRef, Request).
+send_to_commitlog(Call) ->
+    {Time, Result} = timer:tc(?MODULE, call_commitlog, [Call]),
+    send_timing_to_statsd(Time, Call),
+    Result.
+
+call_commitlog(Call) ->
+    try ?MODULE:do_call_commitlog(Call)
+    catch _:E -> {error, E}
+    end.
+
+%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'},
+%%                 {produce, <<"store">>, <<"bucket">>, <<"key">>, <<"value">>}).
+do_call_commitlog({ServerRef, Request}) ->
+    gen_server:call(ServerRef, Request).
+
 
 %% ---------------------------------------------------------------------------
 %% Internal
 %% ---------------------------------------------------------------------------
+
+-define(LOG_MSG_FMT, "[postcommit-hook] ~s ~s|~s").
+
+log(Level, Format, Data) ->
+    log(Level, Format, Data, unknown, unknown).
+
+log(Level, Format, Data, Call) ->
+    {_, {_, _, Bucket, Key, _}} = Call,
+    log(Level, Format, Data, Bucket, Key).
+
+log(info, Format, Data, Bucket, Key) ->
+    error_logger:info_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]);
+log(warn, Format, Data, Bucket, Key) ->
+    error_logger:warning_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]).
+
+build_commitlog_request(RiakObject) ->
+    try
+        Action = get_action(RiakObject),
+        Bucket = riak_object:bucket(RiakObject),
+        Key    = riak_object:key(RiakObject),
+        Value  = riak_object:get_value(RiakObject),
+        {ok, {produce, Action, Bucket, Key, Value}}
+    catch
+        _:E -> {error, E}
+    end.
 
 get_action(Object) ->
     Metadata = riak_object:get_metadata(Object),
@@ -56,31 +85,24 @@ get_action(Object) ->
         _ -> store
     end.
 
-get_bucket(Object) ->
-    riak_object:bucket(Object).
-
-get_key(Object) ->
-    riak_object:key(Object).
-
-get_value(Object) ->
-    riak_object:get_value(Object).
-
-send_timing_to_statsd(Timing) ->
-    StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
-
-    case gen_udp:open(0, [binary]) of
-        {ok, Socket} ->
-            case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    {error, unable_to_send_to_statsd_socket, Reason}
-            end;
-        {error, Reason} ->
-            {error, unable_to_open_statsd_socket, Reason}
+send_timing_to_statsd(Time, Call) ->
+    Message = io_lib:format("postcommit-hook-timing:~w|ms", [Time]),
+    case do_send_timing_to_statsd(Message) of
+        ok -> ok;
+        {error, Reason} -> log(warn, "Unable to send timing to statsd: ~w.", [Reason], Call)
     end.
 
-remote_node() ->
+do_send_timing_to_statsd(Message) ->
+    case gen_udp:open(0, [binary]) of
+        {ok, Socket} ->
+            case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, Message) of
+                ok -> ok;
+                {error, Reason} -> {error, {unable_to_send_to_statsd_socket, Reason}}
+            end;
+        {error, Reason} -> {error, {unable_to_open_statsd_socket, Reason}}
+    end.
+
+commitlog_node() ->
     Hostname = case os:getenv("COMMITLOG_HOSTNAME") of
                    false -> [_Name, Host] = string:tokens(atom_to_list(node()), "@"),
                             Host;
@@ -89,84 +111,92 @@ remote_node() ->
     Remote = "commitlog" ++ "@" ++ Hostname,
     list_to_atom(Remote).
 
+
 %% ---------------------------------------------------------------------------
 %% Tests
 %% ---------------------------------------------------------------------------
 
 -ifdef(TEST).
 
-get_test_() ->
+build_commitlog_request_test_() ->
     {foreach,
      fun() -> meck:new(riak_object, [non_strict]) end,
      fun(_) -> meck:unload(riak_object) end,
-     [{"get_action: delete",
+     [{"Returns ok if object is valid",
+       fun() ->
+               meck:expect(riak_object, get_metadata, 1, dict:new()),
+               meck:expect(riak_object, bucket, 1, b),
+               meck:expect(riak_object, key, 1, k),
+               meck:expect(riak_object, get_value, 1, v),
+               ?assertEqual({ok, {produce, store, b, k, v}},
+                            build_commitlog_request(a_riak_object)),
+               ?assert(meck:validate(riak_object))
+       end},
+      {"Returns error if object is invalid",
+       fun() ->
+               meck:expect(riak_object, get_metadata, 1, nil),
+               ?assertMatch({error, _}, build_commitlog_request(a_riak_object)),
+               ?assert(meck:validate(riak_object))
+       end}]}.
+
+get_action_test_() ->
+    {foreach,
+     fun() -> meck:new(riak_object, [non_strict]) end,
+     fun(_) -> meck:unload(riak_object) end,
+     [{"Returns delete if X-Riak-Deleted metadata is set",
        fun() ->
                meck:expect(riak_object, get_metadata, 1,
                            dict:from_list([{<<"X-Riak-Deleted">>, "true"}])),
                ?assertEqual(delete, get_action(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end},
-      {"get_action: store",
+      {"Returns store if X-Riak-Deleted metadata is not set",
        fun() ->
                meck:expect(riak_object, get_metadata, 1, dict:new()),
                ?assertEqual(store, get_action(a_riak_object)),
                ?assert(meck:validate(riak_object))
-       end},
-      {"get_bucket",
-       fun() ->
-               meck:expect(riak_object, bucket, 1, "bucket"),
-               ?assertEqual("bucket", get_bucket(a_riak_object)),
-               ?assert(meck:validate(riak_object))
-       end},
-      {"get_key",
-       fun() ->
-               meck:expect(riak_object, key, 1, "key"),
-               ?assertEqual("key", get_key(a_riak_object)),
-               ?assert(meck:validate(riak_object))
-       end},
-      {"get_value",
-       fun() ->
-               meck:expect(riak_object, get_value, 1, "value"),
-               ?assertEqual("value", get_value(a_riak_object)),
-               ?assert(meck:validate(riak_object))
        end}]}.
 
-send_timing_to_statsd_test_() ->
+do_send_timing_to_statsd_test_() ->
     {foreach,
      fun() -> meck:new(gen_udp, [unstick]) end,
      fun(_) -> meck:unload(gen_udp) end,
-     [{"unable to open socket",
+     [{"Returns error if unable to open socket",
        fun() ->
                meck:expect(gen_udp, open, 2, {error, reason}),
-               ?assertEqual({error, unable_to_open_statsd_socket, reason},
-                            send_timing_to_statsd(0)),
+               ?assertMatch({error, {unable_to_open_statsd_socket, _}},
+                            do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end},
-      {"unable to send",
+      {"Returns error if unable to send on socket",
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, {error, reason}),
-               ?assertEqual({error, unable_to_send_to_statsd_socket, reason},
-                            send_timing_to_statsd(0)),
+               ?assertMatch({error, {unable_to_send_to_statsd_socket, _}},
+                            do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end},
-      {"successful send",
+      {"Returns ok if send is successful",
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, ok),
-               ?assertEqual(ok, send_timing_to_statsd(0)),
+               ?assertEqual(ok, do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end}]}.
 
-remote_node_test_() ->
-    [{"COMMITLOG_HOSTNAME not set",
+commitlog_node_test_() ->
+    [{"Uses node host name if COMMITLOG_HOSTNAME env var is not set",
       fun() ->
-              ?assertEqual('commitlog@nohost', remote_node())
+              ?assertEqual('commitlog@nohost', commitlog_node())
       end},
-     {"COMMITLOG_HOSTNAME set",
+     {"Uses COMMITLOG_HOSTNAME env var if set",
       fun() ->
               os:putenv("COMMITLOG_HOSTNAME", "commitlog.test"),
-              ?assertEqual('commitlog@commitlog.test', remote_node())
+              ?assertEqual('commitlog@commitlog.test', commitlog_node())
       end}].
+
+force_separator_before_test_results_test_() ->
+    Separator = "~n=======================================================~n",
+    ?_assert(ok == io:format(standard_error, Separator, [])).
 
 -endif.
