@@ -110,24 +110,6 @@ remote_node() ->
 
 -ifdef(TEST).
 
-get_action_test_() ->
-    {foreach,
-     fun() -> meck:new(riak_object, [non_strict]) end,
-     fun(_) -> meck:unload(riak_object) end,
-     [{"Returns delete if X-Riak-Deleted metadata is set",
-       fun() ->
-               meck:expect(riak_object, get_metadata, 1,
-                           dict:from_list([{<<"X-Riak-Deleted">>, "true"}])),
-               ?assertEqual(delete, get_action(a_riak_object)),
-               ?assert(meck:validate(riak_object))
-       end},
-      {"Returns store if X-Riak-Deleted metadata is not set",
-       fun() ->
-               meck:expect(riak_object, get_metadata, 1, dict:new()),
-               ?assertEqual(store, get_action(a_riak_object)),
-               ?assert(meck:validate(riak_object))
-       end}]}.
-
 riak_object_components_test_() ->
     {foreach,
      fun() -> meck:new(riak_object, [non_strict]) end,
@@ -145,6 +127,24 @@ riak_object_components_test_() ->
        fun() ->
                meck:expect(riak_object, get_metadata, 1, nil),
                ?assertMatch({error, _}, riak_object_components(a_riak_object)),
+               ?assert(meck:validate(riak_object))
+       end}]}.
+
+get_action_test_() ->
+    {foreach,
+     fun() -> meck:new(riak_object, [non_strict]) end,
+     fun(_) -> meck:unload(riak_object) end,
+     [{"Returns delete if X-Riak-Deleted metadata is set",
+       fun() ->
+               meck:expect(riak_object, get_metadata, 1,
+                           dict:from_list([{<<"X-Riak-Deleted">>, "true"}])),
+               ?assertEqual(delete, get_action(a_riak_object)),
+               ?assert(meck:validate(riak_object))
+       end},
+      {"Returns store if X-Riak-Deleted metadata is not set",
+       fun() ->
+               meck:expect(riak_object, get_metadata, 1, dict:new()),
+               ?assertEqual(store, get_action(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end}]}.
 
