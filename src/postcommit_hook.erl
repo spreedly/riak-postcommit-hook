@@ -16,23 +16,24 @@ send_to_kafka_riak_commitlog(Object) ->
     case riak_object_components(Object) of
         {ok, {Action, Bucket, Key, Value}} ->
             SyncStartMicrotime = microtimestamp(),
-            try
-                ok = ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value),
-                error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Bucket: ~p. Key: ~p.", [Bucket, Key]),
-                ok
-            catch
-                _:SyncException ->
-                    error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~p. Bucket: ~p. Key: ~p.", [SyncException, Bucket, Key]),
-                    throw(SyncException)
-            after
-                SyncMicrotime = microtimestamp() - SyncStartMicrotime,
-                case send_timing_to_statsd(SyncMicrotime) of
-                    ok -> ok;
-                    {error, StatsdError} ->
-                        error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~w. Timing: ~p. Bucket: ~p. Key: ~p.",
-                                                 [StatsdError, SyncMicrotime, Bucket, Key])
-                end
-            end;
+            SyncResult = case ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value) of
+                             ok ->
+                                 error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Bucket: ~p. Key: ~p.",
+                                                       [Bucket, Key]),
+                                 ok;
+                             {error, CommitlogError} ->
+                                 error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~w. Bucket: ~p. Key: ~p.",
+                                                          [CommitlogError, Bucket, Key]),
+                                 {error, CommitlogError}
+                         end,
+            SyncElapsedMicrotime = microtimestamp() - SyncStartMicrotime,
+            case send_timing_to_statsd(SyncElapsedMicrotime) of
+                ok -> ok;
+                {error, StatsdError} ->
+                    error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~w. Timing: ~p. Bucket: ~p. Key: ~p.",
+                                             [StatsdError, SyncElapsedMicrotime, Bucket, Key])
+            end,
+            SyncResult;
         {error, RiakObjectError} ->
             error_logger:warning_msg("[postcommit-hook] Unable to extract data from Riak object: ~w. Object: ~p.",
                                      [RiakObjectError, Object]),
@@ -43,7 +44,10 @@ send_to_kafka_riak_commitlog(Object) ->
 sync_to_commitlog(Action, Bucket, Key, Value) ->
     ServerRef = {?COMMITLOG_PROCESS, remote_node()},
     Request = {produce, Action, Bucket, Key, Value},
-    ok = gen_server:call(ServerRef, Request).
+    try gen_server:call(ServerRef, Request)
+    catch
+        _:E -> {error, E}
+    end.
 
 %% ---------------------------------------------------------------------------
 %% Internal

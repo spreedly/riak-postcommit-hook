@@ -42,12 +42,15 @@ send_to_kafka_riak_commitlog_test_() ->
                 ?assertEqual(ok, send_to_kafka_riak_commitlog(a_riak_object)),
                 ?assert(meck:validate(postcommit_hook))
         end},
-       {"Throws when Commitlog is unavailable",
+       {"Returns error when Commitlog is unavailable",
         fun() ->
                 Commitlog = whereis(?COMMITLOG_PROCESS),
                 meck:expect(postcommit_hook, sync_to_commitlog,
-                            fun(store, b, k, v) -> gen_server:call(Commitlog, a_request, 0) end),
-                ?assertThrow({timeout, _}, send_to_kafka_riak_commitlog(a_riak_object))
+                            fun(store, b, k, v) ->
+                                    try gen_server:call(Commitlog, a_request, 0)
+                                    catch _:E -> {error, E} end
+                            end),
+                ?assertMatch({error, _}, send_to_kafka_riak_commitlog(a_riak_object))
         end},
        {"Returns ok when statsd is unavailable",
         fun() ->
