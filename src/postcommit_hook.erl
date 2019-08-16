@@ -56,10 +56,10 @@ riak_object_components(Object) ->
         Value  = riak_object:get_value(Object),
         {ok, {Action, Bucket, Key, Value}}
     catch
-        Class:Error ->
+        _:Error ->
             error_logger:warning_msg("[postcommit-hook] Unable to extract data from Riak object: ~p. Object: ~p.",
-                                     [{Class, Error}, Object]),
-            {error, {Class, Error}}
+                                     [Error, Object]),
+            {error, Error}
     end.
 
 get_action(Object) ->
@@ -136,8 +136,9 @@ riak_object_components_test_() ->
        end},
       {"Returns error if object is invalid",
        fun() ->
-               meck:expect(riak_object, get_metadata, fun(_) -> error(e) end),
-               ?assertMatch({error, _}, riak_object_components(a_riak_object))
+               meck:expect(riak_object, get_metadata, 1, nil),
+               ?assertMatch({error, _}, riak_object_components(a_riak_object)),
+               ?assert(meck:validate(riak_object))
        end}]}.
 
 send_timing_to_statsd_test_() ->
