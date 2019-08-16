@@ -40,7 +40,6 @@ send_to_kafka_riak_commitlog(Object) ->
             {error, RiakObjectError}
     end.
 
-%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
 sync_to_commitlog(Action, Bucket, Key, Value) ->
     ServerRef = {?COMMITLOG_PROCESS, remote_node()},
     Request = {produce, Action, Bucket, Key, Value},
@@ -49,6 +48,7 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
         _:E -> {error, E}
     end.
 
+%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
 call_commitlog(ServerRef, Request) ->
     gen_server:call(ServerRef, Request).
 
