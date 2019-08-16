@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4, call_commitlog/2]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -44,10 +44,14 @@ send_to_kafka_riak_commitlog(Object) ->
 sync_to_commitlog(Action, Bucket, Key, Value) ->
     ServerRef = {?COMMITLOG_PROCESS, remote_node()},
     Request = {produce, Action, Bucket, Key, Value},
-    try gen_server:call(ServerRef, Request)
+    try ?MODULE:call_commitlog(ServerRef, Request)
     catch
         _:E -> {error, E}
     end.
+
+call_commitlog(ServerRef, Request) ->
+    gen_server:call(ServerRef, Request).
+
 
 %% ---------------------------------------------------------------------------
 %% Internal
@@ -98,6 +102,7 @@ remote_node() ->
                end,
     Remote = "commitlog" ++ "@" ++ Hostname,
     list_to_atom(Remote).
+
 
 %% ---------------------------------------------------------------------------
 %% Tests

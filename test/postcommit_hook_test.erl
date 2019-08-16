@@ -16,45 +16,68 @@ handle_info(_, _) -> ok.
 terminate(_, _) -> ok.
 
 send_to_kafka_riak_commitlog_test_() ->
-     {foreach,
-      fun() ->
-              start_link(),
-              meck:new(postcommit_hook, [passthrough, non_strict]),
-              meck:new(riak_object, [non_strict]),
-              meck:expect(riak_object, get_metadata, 1, dict:new()),
-              meck:expect(riak_object, bucket, 1, b),
-              meck:expect(riak_object, key, 1, k),
-              meck:expect(riak_object, get_value, 1, v)
-      end,
-      fun(_) ->
-              meck:unload(postcommit_hook),
-              meck:unload(riak_object)
-      end,
-      [{"Returns ok on successful send to commitlog",
-        fun() ->
-                Commitlog = whereis(?COMMITLOG_PROCESS),
-                meck:expect(postcommit_hook, sync_to_commitlog,
-                            fun(store, b, k, v) -> gen_server:call(Commitlog, a_request) end),
-                ?assertEqual(ok, send_to_kafka_riak_commitlog(a_riak_object)),
-                ?assert(meck:validate(postcommit_hook))
-        end},
-       {"Returns error when Commitlog is unavailable",
-        fun() ->
-                Commitlog = whereis(?COMMITLOG_PROCESS),
-                meck:expect(postcommit_hook, sync_to_commitlog,
-                            fun(store, b, k, v) ->
-                                    try gen_server:call(Commitlog, a_request, 0)
-                                    catch _:E -> {error, E} end
-                            end),
-                ?assertMatch({error, _}, send_to_kafka_riak_commitlog(a_riak_object))
-        end},
-       {"Returns ok when statsd is unavailable",
-        fun() ->
-                meck:new(gen_udp, [unstick]),
-                meck:expect(gen_udp, open, 2, {error, reason}),
-                meck:expect(postcommit_hook, sync_to_commitlog, 4, ok),
-                ?assertEqual(ok, send_to_kafka_riak_commitlog(test_riak_object3)),
-                ?assert(meck:validate(postcommit_hook)),
-                ?assert(meck:validate(gen_udp)),
-                meck:unload(gen_udp)
-        end}]}.
+    {foreach,
+     fun() ->
+             start_link(),
+             meck:new(postcommit_hook, [passthrough, non_strict]),
+             meck:new(riak_object, [non_strict]),
+             meck:expect(riak_object, get_metadata, 1, dict:new()),
+             meck:expect(riak_object, bucket, 1, b),
+             meck:expect(riak_object, key, 1, k),
+             meck:expect(riak_object, get_value, 1, v)
+     end,
+     fun(_) ->
+             meck:unload(postcommit_hook),
+             meck:unload(riak_object)
+     end,
+     [{"Returns error when Riak object is invalid",
+       fun() ->
+               meck:expect(riak_object, bucket, 1, fun(_) -> error(forced_by_test1) end),
+               ?assertMatch({error, _}, send_to_kafka_riak_commitlog(test_riak_object1)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Returns ok when call to Commitlog succeeds",
+       fun() ->
+               meck:expect(riak_object, key, 1, k2),
+               meck:expect(postcommit_hook, call_commitlog, 2, ok),
+               ?assertEqual(ok, send_to_kafka_riak_commitlog(test_riak_object2)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Returns ok when statsd is unavailable",
+       fun() ->
+               meck:new(gen_udp, [unstick]),
+               meck:expect(gen_udp, open, 2, {error, forced_by_test3}),
+               meck:expect(riak_object, key, 1, k3),
+               meck:expect(postcommit_hook, call_commitlog, 2, ok),
+               ?assertEqual(ok, send_to_kafka_riak_commitlog(test_riak_object3)),
+               ?assert(meck:validate(postcommit_hook)),
+               ?assert(meck:validate(gen_udp)),
+               meck:unload(gen_udp)
+       end},
+      {"Returns error when call to Commitlog fails",
+       fun() ->
+               meck:expect(riak_object, key, 1, k4),
+               meck:expect(postcommit_hook, call_commitlog, 2, {error, forced_by_test4}),
+               ?assertMatch({error, _}, send_to_kafka_riak_commitlog(test_riak_object4)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Returns error when Commitlog node is down",
+       fun() ->
+               meck:expect(riak_object, key, 1, k5),
+               meck:expect(postcommit_hook, call_commitlog,
+                           fun(_ServerRef, Req) ->
+                                   gen_server:call({invalid_name, 'invalid_node'}, Req)
+                           end),
+               ?assertMatch({error, {{nodedown, _}, _}}, send_to_kafka_riak_commitlog(test_riak_object5))
+       end},
+      {"Returns error when call to Commitlog times out",
+       fun() ->
+               Commitlog = whereis(?COMMITLOG_PROCESS),
+               meck:expect(riak_object, key, 1, k6),
+               meck:expect(postcommit_hook, call_commitlog,
+                           fun(_ServerRef, Req) ->
+                                   gen_server:call(Commitlog, Req, 0)
+                           end),
+               ?assertMatch({error, {timeout, _}}, send_to_kafka_riak_commitlog(test_riak_object6))
+       end}
+     ]}.
