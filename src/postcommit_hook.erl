@@ -169,4 +169,8 @@ remote_node_test_() ->
               ?assertEqual('commitlog@commitlog.test', remote_node())
       end}].
 
+force_separator_before_test_results_test_() ->
+    Separator = "~n=======================================================~n",
+    ?_assert(ok == io:format(standard_error, Separator, [])).
+
 -endif.
