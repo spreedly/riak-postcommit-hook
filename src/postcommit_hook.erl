@@ -18,25 +18,21 @@ send_to_kafka_riak_commitlog(Object) ->
             SyncStartMicrotime = microtimestamp(),
             SyncResult = case ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value) of
                              ok ->
-                                 error_logger:info_msg("[postcommit-hook] sync_to_commitlog success. Bucket: ~p. Key: ~p.",
-                                                       [Bucket, Key]),
+                                 log(info, "sync_to_commitlog success.", [], Bucket, Key),
                                  ok;
                              {error, CommitlogError} ->
-                                 error_logger:warning_msg("[postcommit-hook] Unable to sync data to Commitlog: ~w. Bucket: ~p. Key: ~p.",
-                                                          [CommitlogError, Bucket, Key]),
+                                 log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
                                  {error, CommitlogError}
                          end,
             SyncElapsedMicrotime = microtimestamp() - SyncStartMicrotime,
             case send_timing_to_statsd(SyncElapsedMicrotime) of
                 ok -> ok;
                 {error, StatsdError} ->
-                    error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~w. Timing: ~p. Bucket: ~p. Key: ~p.",
-                                             [StatsdError, SyncElapsedMicrotime, Bucket, Key])
+                    log(warn, "Unable to send timing to statsd: ~w. Timing: ~p.", [StatsdError, SyncElapsedMicrotime], Bucket, Key)
             end,
             SyncResult;
         {error, RiakObjectError} ->
-            error_logger:warning_msg("[postcommit-hook] Unable to extract data from Riak object: ~w. Object: ~p.",
-                                     [RiakObjectError, Object]),
+            log(warn, "Unable to extract data from Riak object: ~w. Object: ~p.", [RiakObjectError, Object]),
             {error, RiakObjectError}
     end.
 
@@ -56,6 +52,16 @@ call_commitlog(ServerRef, Request) ->
 %% ---------------------------------------------------------------------------
 %% Internal
 %% ---------------------------------------------------------------------------
+
+-define(LOG_MESSAGE_FORMAT, "[postcommit-hook] ~s ~s|~s").
+
+log(Level, Format, Data) ->
+    log(Level, Format, Data, unknown, unknown).
+
+log(info, Format, Data, Bucket, Key) ->
+    error_logger:info_msg(?LOG_MESSAGE_FORMAT, [io_lib:format(Format, Data), Bucket, Key]);
+log(warn, Format, Data, Bucket, Key) ->
+    error_logger:warning_msg(?LOG_MESSAGE_FORMAT, [io_lib:format(Format, Data), Bucket, Key]).
 
 riak_object_components(Object) ->
     try
