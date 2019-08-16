@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4, riak_object_components/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -13,13 +13,7 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    {Action, Bucket, Key, Value} = try
-        {get_action(Object), get_bucket(Object), get_key(Object), get_value(Object)}
-    catch
-        _:ExtractException ->
-            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.", [ExtractException, Object]),
-            throw(ExtractException)
-    end,
+    {ok, {Action, Bucket, Key, Value}} = ?MODULE:riak_object_components(Object),
 
     TimingResult = try
         {Timing, ok} = timer:tc(?MODULE, sync_to_commitlog, [Action, Bucket, Key, Value]),
@@ -45,6 +39,20 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
     Request = {produce, Action, Bucket, Key, Value},
     ok = gen_server:call(ServerRef, Request).
 
+riak_object_components(Object) ->
+    try
+        Action = get_action(Object),
+        Bucket = riak_object:bucket(Object),
+        Key    = riak_object:key(Object),
+        Value  = riak_object:get_value(Object),
+        {ok, {Action, Bucket, Key, Value}}
+    catch
+        Class:Error ->
+            error_logger:warning_msg("[commitlog] Unable to extract data from Riak object: ~p. Object: ~p.",
+                                     [{Class, Error}, Object]),
+            {error, {Class, Error}}
+    end.
+
 %% ---------------------------------------------------------------------------
 %% Internal
 %% ---------------------------------------------------------------------------
@@ -56,14 +64,7 @@ get_action(Object) ->
         _ -> store
     end.
 
-get_bucket(Object) ->
-    riak_object:bucket(Object).
 
-get_key(Object) ->
-    riak_object:key(Object).
-
-get_value(Object) ->
-    riak_object:get_value(Object).
 
 send_timing_to_statsd(Timing) ->
     StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
@@ -95,40 +96,41 @@ remote_node() ->
 
 -ifdef(TEST).
 
-get_test_() ->
+get_action_test_() ->
     {foreach,
      fun() -> meck:new(riak_object, [non_strict]) end,
      fun(_) -> meck:unload(riak_object) end,
-     [{"get_action: delete",
+     [{"Returns delete if X-Riak-Deleted metadata is set",
        fun() ->
                meck:expect(riak_object, get_metadata, 1,
                            dict:from_list([{<<"X-Riak-Deleted">>, "true"}])),
                ?assertEqual(delete, get_action(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end},
-      {"get_action: store",
+      {"Returns store if X-Riak-Deleted metadata is not set",
        fun() ->
                meck:expect(riak_object, get_metadata, 1, dict:new()),
                ?assertEqual(store, get_action(a_riak_object)),
                ?assert(meck:validate(riak_object))
-       end},
-      {"get_bucket",
+       end}]}.
+
+riak_object_components_test_() ->
+    {foreach,
+     fun() -> meck:new(riak_object, [non_strict]) end,
+     fun(_) -> meck:unload(riak_object) end,
+     [{"Returns ok if object is valid",
        fun() ->
-               meck:expect(riak_object, bucket, 1, "bucket"),
-               ?assertEqual("bucket", get_bucket(a_riak_object)),
+               meck:expect(riak_object, get_metadata, 1, dict:new()),
+               meck:expect(riak_object, bucket, 1, b),
+               meck:expect(riak_object, key, 1, k),
+               meck:expect(riak_object, get_value, 1, v),
+               ?assertEqual({ok, {store, b, k, v}}, riak_object_components(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end},
-      {"get_key",
+      {"Returns error if object is invalid",
        fun() ->
-               meck:expect(riak_object, key, 1, "key"),
-               ?assertEqual("key", get_key(a_riak_object)),
-               ?assert(meck:validate(riak_object))
-       end},
-      {"get_value",
-       fun() ->
-               meck:expect(riak_object, get_value, 1, "value"),
-               ?assertEqual("value", get_value(a_riak_object)),
-               ?assert(meck:validate(riak_object))
+               meck:expect(riak_object, get_metadata, fun(_) -> error(e) end),
+               ?assertMatch({error, _}, riak_object_components(a_riak_object))
        end}]}.
 
 send_timing_to_statsd_test_() ->

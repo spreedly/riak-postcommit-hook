@@ -20,38 +20,25 @@ send_to_kafka_riak_commitlog_test_() ->
       fun() ->
               start_link(),
               meck:new(postcommit_hook, [passthrough, non_strict]),
-              meck:new(riak_object, [non_strict]),
-              meck:expect(riak_object, bucket,    fun({b, _, _}) -> b end),
-              meck:expect(riak_object, key,       fun({_, k, _}) -> k end),
-              meck:expect(riak_object, get_value, fun({_, _, v}) -> v end),
-              meck:expect(riak_object, get_metadata, 1, dict:new())
+              meck:expect(postcommit_hook, riak_object_components, 1, {ok, {store, b, k, v}})
       end,
       fun(_) ->
-              meck:unload(postcommit_hook),
-              meck:unload(riak_object)
+              meck:unload(postcommit_hook)
       end,
       [{"Returns ok on successful send to commitlog",
         fun() ->
                 Commitlog = whereis(?COMMITLOG_PROCESS),
                 meck:expect(postcommit_hook, sync_to_commitlog,
-                            fun(_, b, k, v) ->
-                                    gen_server:call(Commitlog, {produce, store, b, k, v})
-                            end),
-                ?assertEqual(ok, send_to_kafka_riak_commitlog({b, k, v})),
+                            fun(store, b, k, v) -> gen_server:call(Commitlog, a_request) end),
+                ?assertEqual(ok, send_to_kafka_riak_commitlog(a_riak_object)),
                 ?assert(meck:validate(postcommit_hook))
-        end},
-       {"Throws when given a bad Object",
-        fun() ->
-                ?assertThrow(function_clause, send_to_kafka_riak_commitlog({}))
         end},
        {"Throws when Commitlog is unavailable",
         fun() ->
                 Commitlog = whereis(?COMMITLOG_PROCESS),
                 meck:expect(postcommit_hook, sync_to_commitlog,
-                            fun(_, _, _, _) ->
-                                    gen_server:call(Commitlog, {}, 0)
-                            end),
-                ?assertThrow({timeout, _}, send_to_kafka_riak_commitlog({b, k, v}))
+                            fun(store, b, k, v) -> gen_server:call(Commitlog, a_request, 0) end),
+                ?assertThrow({timeout, _}, send_to_kafka_riak_commitlog(a_riak_object))
         end},
        {"Throws when statsd is unavailable",
         fun() ->
