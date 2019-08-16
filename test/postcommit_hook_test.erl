@@ -24,15 +24,11 @@ send_to_kafka_riak_commitlog_test_() ->
               meck:expect(riak_object, get_metadata, 1, dict:new()),
               meck:expect(riak_object, bucket, 1, b),
               meck:expect(riak_object, key, 1, k),
-              meck:expect(riak_object, get_value, 1, v),
-              meck:new(gen_udp, [unstick]),
-              meck:expect(gen_udp, open, 2, {ok, socket}),
-              meck:expect(gen_udp, send, 4, ok)
+              meck:expect(riak_object, get_value, 1, v)
       end,
       fun(_) ->
               meck:unload(postcommit_hook),
-              meck:unload(riak_object),
-              meck:unload(gen_udp)
+              meck:unload(riak_object)
       end,
       [{"Returns ok on successful send to commitlog",
         fun() ->
@@ -54,9 +50,11 @@ send_to_kafka_riak_commitlog_test_() ->
         end},
        {"Returns ok when statsd is unavailable",
         fun() ->
+                meck:new(gen_udp, [unstick]),
                 meck:expect(gen_udp, open, 2, {error, reason}),
                 meck:expect(postcommit_hook, sync_to_commitlog, 4, ok),
                 ?assertEqual(ok, send_to_kafka_riak_commitlog(test_riak_object3)),
                 ?assert(meck:validate(postcommit_hook)),
-                ?assert(meck:validate(gen_udp))
+                ?assert(meck:validate(gen_udp)),
+                meck:unload(gen_udp)
         end}]}.
