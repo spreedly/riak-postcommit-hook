@@ -81,3 +81,30 @@ send_to_kafka_riak_commitlog_test_() ->
                ?assertMatch({error, {timeout, _}}, send_to_kafka_riak_commitlog(test_riak_object6))
        end}
      ]}.
+
+sync_to_commitlog_test_() ->
+    {foreach,
+     fun() -> meck:new(postcommit_hook, [passthrough]) end,
+     fun(_) -> meck:unload(postcommit_hook) end,
+     [{"Passes expected arguments to call_commitlog",
+       fun() ->
+               meck:expect(postcommit_hook, call_commitlog,
+                           fun(ServerRef, Req) -> {ServerRef, Req} end),
+               ?assertEqual({{?COMMITLOG_PROCESS, 'commitlog@nohost'},
+                             {produce, a, b, k, v}},
+                            sync_to_commitlog(a, b, k, v)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Returns ok when call_commitlog succeeds",
+       fun() ->
+               meck:expect(postcommit_hook, call_commitlog, 2, ok),
+               ?assertEqual(ok, sync_to_commitlog(a, b, k, v)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Returns error when call_commitlog fails",
+       fun() ->
+               meck:expect(postcommit_hook, call_commitlog,
+                           fun(_, _) -> exit(forced_by_test) end),
+               ?assertMatch({error, _}, sync_to_commitlog(a, b, k, v))
+       end}
+     ]}.
