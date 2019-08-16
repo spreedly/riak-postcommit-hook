@@ -26,13 +26,11 @@ send_to_kafka_riak_commitlog(Object) ->
                     throw(SyncException)
             after
                 SyncMicrotime = microtimestamp() - SyncStartMicrotime,
-                try
-                    ok = send_timing_to_statsd(SyncMicrotime)
-                catch
-                    _:TimingException ->
-                        error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~p. Timing: ~p. Bucket: ~p. Key: ~p.",
-                                                 [TimingException, SyncMicrotime, Bucket, Key]),
-                        throw(TimingException)
+                case send_timing_to_statsd(SyncMicrotime) of
+                    ok -> ok;
+                    {error, StatsdError} ->
+                        error_logger:warning_msg("[postcommit-hook] Unable to send timing to statsd: ~w. Timing: ~p. Bucket: ~p. Key: ~p.",
+                                                 [StatsdError, SyncMicrotime, Bucket, Key])
                 end
             end;
         {error, RiakObjectError} ->
