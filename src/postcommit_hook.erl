@@ -15,7 +15,7 @@
 send_to_kafka_riak_commitlog(Object) ->
     case riak_object_components(Object) of
         {ok, {Action, Bucket, Key, Value}} ->
-            SyncStartMicrotime = microtimestamp(),
+            SyncStartTime = microtimestamp(),
             SyncResult = case ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value) of
                              ok ->
                                  log(info, "sync_to_commitlog success.", [], Bucket, Key),
@@ -24,11 +24,11 @@ send_to_kafka_riak_commitlog(Object) ->
                                  log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
                                  {error, CommitlogError}
                          end,
-            SyncElapsedMicrotime = microtimestamp() - SyncStartMicrotime,
-            case send_timing_to_statsd(SyncElapsedMicrotime) of
+            SyncElapsedTime = microtimestamp() - SyncStartTime,
+            case send_timing_to_statsd(SyncElapsedTime) of
                 ok -> ok;
                 {error, StatsdError} ->
-                    log(warn, "Unable to send timing to statsd: ~w. Timing: ~p.", [StatsdError, SyncElapsedMicrotime], Bucket, Key)
+                    log(warn, "Unable to send timing to statsd: ~w. Timing: ~p.", [StatsdError, SyncElapsedTime], Bucket, Key)
             end,
             SyncResult;
         {error, RiakObjectError} ->
