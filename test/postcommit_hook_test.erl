@@ -20,13 +20,18 @@ send_to_kafka_riak_commitlog_test_() ->
       fun() ->
               start_link(),
               meck:new(postcommit_hook, [passthrough, non_strict]),
-              meck:expect(postcommit_hook, riak_object_components, 1, {ok, {store, b, k, v}}),
+              meck:new(riak_object, [non_strict]),
+              meck:expect(riak_object, get_metadata, 1, dict:new()),
+              meck:expect(riak_object, bucket, 1, b),
+              meck:expect(riak_object, key, 1, k),
+              meck:expect(riak_object, get_value, 1, v),
               meck:new(gen_udp, [unstick]),
               meck:expect(gen_udp, open, 2, {ok, socket}),
               meck:expect(gen_udp, send, 4, ok)
       end,
       fun(_) ->
               meck:unload(postcommit_hook),
+              meck:unload(riak_object),
               meck:unload(gen_udp)
       end,
       [{"Returns ok on successful send to commitlog",

@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4, riak_object_components/1]).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -13,7 +13,7 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    {ok, {Action, Bucket, Key, Value}} = ?MODULE:riak_object_components(Object),
+    {ok, {Action, Bucket, Key, Value}} = riak_object_components(Object),
 
     SyncStartMicrotime = microtimestamp(),
     try
@@ -44,6 +44,10 @@ sync_to_commitlog(Action, Bucket, Key, Value) ->
     Request = {produce, Action, Bucket, Key, Value},
     ok = gen_server:call(ServerRef, Request).
 
+%% ---------------------------------------------------------------------------
+%% Internal
+%% ---------------------------------------------------------------------------
+
 riak_object_components(Object) ->
     try
         Action = get_action(Object),
@@ -58,17 +62,12 @@ riak_object_components(Object) ->
             {error, {Class, Error}}
     end.
 
-%% ---------------------------------------------------------------------------
-%% Internal
-%% ---------------------------------------------------------------------------
-
 get_action(Object) ->
     Metadata = riak_object:get_metadata(Object),
     case dict:find(<<"X-Riak-Deleted">>, Metadata) of
         {ok, "true"} -> delete;
         _ -> store
     end.
-
 
 microtimestamp() ->
     {Mega, Sec, Micro} = os:timestamp(),
