@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/1, do_call_commitlog/1]).
+-export([send_to_kafka_riak_commitlog/1, call_commitlog/1, do_call_commitlog/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -19,9 +19,9 @@ send_to_kafka_riak_commitlog(Object) ->
             ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
             Call = {ServerRef, Request},
             {_, _, Bucket, Key, _} = Request,
-            SyncResult = case ?MODULE:sync_to_commitlog(Call) of
+            SyncResult = case ?MODULE:call_commitlog(Call) of
                              ok ->
-                                 log(info, "sync_to_commitlog success.", [], Bucket, Key),
+                                 log(info, "call_commitlog success.", [], Bucket, Key),
                                  ok;
                              {error, CommitlogError} ->
                                  log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
@@ -39,7 +39,7 @@ send_to_kafka_riak_commitlog(Object) ->
             {error, RiakObjectError}
     end.
 
-sync_to_commitlog(Call) ->
+call_commitlog(Call) ->
     try ?MODULE:do_call_commitlog(Call)
     catch
         _:E -> {error, E}
