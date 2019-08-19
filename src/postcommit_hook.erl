@@ -21,8 +21,9 @@ send_to_kafka_riak_commitlog(RiakObject) ->
     case commitlog_request(RiakObject) of
         {ok, Request} ->
             Call = {{?COMMITLOG_PROCESS, commitlog_node()}, Request},
-            {MicroTime, {Result, Attempts}} = timer:tc(?MODULE, send_to_commitlog_with_retries,
-                                                       [Call, 0, ?INITIAL_RETRY_DELAY_MS]),
+            {MicroTime,
+             {Result, Attempts}} = timer:tc(?MODULE, send_to_commitlog_with_retries,
+                                            [Call, 0, ?INITIAL_RETRY_DELAY_MS]),
             Time = round(MicroTime / 1000),
             case Result of
                 ok ->
