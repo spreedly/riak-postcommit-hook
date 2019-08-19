@@ -3,11 +3,16 @@
 -behaviour(gen_server).
 -export([init/1, code_change/3, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
--import(postcommit_hook, [send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1]).
--include("src/postcommit_hook.hrl").
+-import(postcommit_hook,
+        [send_to_kafka_riak_commitlog/1,
+         send_to_commitlog_with_retries/3,
+         retry_send_to_commitlog/3,
+         send_to_commitlog/1,
+         call_commitlog/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 
-start_link() -> gen_server:start_link({local, ?COMMITLOG_PROCESS}, ?MODULE, [], []).
+start_link() -> gen_server:start_link({local, commitlog}, ?MODULE, [], []).
 init([]) -> {ok, []}.
 code_change(_, _, _) -> ok.
 handle_call(_, _, State) -> {reply, ok, State}.
@@ -20,6 +25,11 @@ send_to_kafka_riak_commitlog_test_() ->
      fun() ->
              start_link(),
              meck:new(postcommit_hook, [passthrough, non_strict]),
+             meck:expect(postcommit_hook, retry_send_to_commitlog,
+                         % Disable retry delay
+                         fun(Call, Attempts, _Delay) ->
+                                 send_to_commitlog_with_retries(Call, Attempts, 0)
+                         end),
              meck:new(riak_object, [non_strict]),
              meck:expect(riak_object, get_metadata, 1, dict:new()),
              meck:expect(riak_object, bucket, 1, b),
@@ -66,31 +76,42 @@ send_to_kafka_riak_commitlog_test_() ->
                meck:expect(riak_object, key, 1, k5),
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call({commitlog, invalid_node}, {}) end),
-               ?assertMatch({error, {{nodedown, _}, _}}, send_to_kafka_riak_commitlog(test_riak_object5))
+               ?assertMatch({error, {nodedown, _}}, send_to_kafka_riak_commitlog(test_riak_object5))
        end},
       {"Returns error when call to Commitlog times out",
        fun() ->
-               Commitlog = whereis(?COMMITLOG_PROCESS),
+               Commitlog = whereis(commitlog),
                meck:expect(riak_object, key, 1, k6),
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call(Commitlog, {}, 0) end),
-               ?assertMatch({error, {timeout, _}}, send_to_kafka_riak_commitlog(test_riak_object6))
-       end}
-     ]}.
+               ?assertMatch({error, timeout}, send_to_kafka_riak_commitlog(test_riak_object6))
+       end}]}.
+
+retry_send_to_commitlog_test_() ->
+    {foreach,
+     fun() -> meck:new(postcommit_hook, [passthrough]) end,
+     fun(_) -> meck:unload(postcommit_hook) end,
+     [{"Calls send_to_commitlog_with_retries with Delay increased",
+       fun() ->
+               meck:expect(postcommit_hook, send_to_commitlog_with_retries,
+                           fun(_, _, Delay) -> Delay end),
+               Delay = 100,
+               ?assert(Delay < retry_send_to_commitlog({}, 0, Delay)),
+               ?assert(meck:validate(postcommit_hook))
+       end}]}.
 
 call_commitlog_test_() ->
     {foreach,
      fun() -> meck:new(postcommit_hook, [passthrough]) end,
      fun(_) -> meck:unload(postcommit_hook) end,
-     [{"Returns ok when do_call_commitlog succeeds",
+     [{"Returns ok when call succeeds",
        fun() ->
                meck:expect(postcommit_hook, do_call_commitlog, 1, ok),
                ?assertEqual(ok, call_commitlog(a_request)),
                ?assert(meck:validate(postcommit_hook))
        end},
-      {"Returns error when do_call_commitlog fails",
+      {"Returns error when call fails",
        fun() ->
                meck:expect(postcommit_hook, do_call_commitlog, fun(_) -> exit(forced_by_test) end),
                ?assertMatch({error, _}, call_commitlog(a_request))
-       end}
-     ]}.
+       end}]}.
