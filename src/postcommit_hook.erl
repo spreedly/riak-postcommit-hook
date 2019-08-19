@@ -17,13 +17,12 @@ send_to_kafka_riak_commitlog(Object) ->
         {ok, Request} ->
             ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
             Call = {ServerRef, Request},
-            {_, _, Bucket, Key, _} = Request,
             case ?MODULE:send_to_commitlog(Call) of
                 ok ->
-                    log(info, "call_commitlog success.", [], Bucket, Key),
+                    log(info, "call_commitlog success.", [], Call),
                     ok;
                 {error, CommitlogError} ->
-                    log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
+                    log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Call),
                     {error, CommitlogError}
             end;
         {error, RiakObjectError} ->
@@ -51,15 +50,19 @@ do_call_commitlog({ServerRef, Request}) ->
 %% Internal
 %% ---------------------------------------------------------------------------
 
--define(LOG_MESSAGE_FORMAT, "[postcommit-hook] ~s ~s|~s").
+-define(LOG_MSG_FMT, "[postcommit-hook] ~s ~s|~s").
 
 log(Level, Format, Data) ->
     log(Level, Format, Data, unknown, unknown).
 
+log(Level, Format, Data, Call) ->
+    {_, {_, _, Bucket, Key, _}} = Call,
+    log(Level, Format, Data, Bucket, Key).
+
 log(info, Format, Data, Bucket, Key) ->
-    error_logger:info_msg(?LOG_MESSAGE_FORMAT, [io_lib:format(Format, Data), Bucket, Key]);
+    error_logger:info_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]);
 log(warn, Format, Data, Bucket, Key) ->
-    error_logger:warning_msg(?LOG_MESSAGE_FORMAT, [io_lib:format(Format, Data), Bucket, Key]).
+    error_logger:warning_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]).
 
 commitlog_request(RiakObject) ->
     try
@@ -81,10 +84,9 @@ get_action(Object) ->
 
 send_timing_to_statsd(Time, Call) ->
     Message = io_lib:format("postcommit-hook-timing:~w|ms", [Time]),
-    {_, {_, _, Bucket, Key, _}} = Call,
     case do_send_timing_to_statsd(Message) of
         ok -> ok;
-        {error, Reason} -> log(warn, "Unable to send timing to statsd: ~w.", [Reason], Bucket, Key)
+        {error, Reason} -> log(warn, "Unable to send timing to statsd: ~w.", [Reason], Call)
     end.
 
 do_send_timing_to_statsd(Message) ->
