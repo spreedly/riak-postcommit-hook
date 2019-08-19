@@ -9,10 +9,10 @@
          retry_send_to_commitlog/3,
          send_to_commitlog/1,
          call_commitlog/1]).
--include("src/postcommit_hook.hrl").
+
 -include_lib("eunit/include/eunit.hrl").
 
-start_link() -> gen_server:start_link({local, ?COMMITLOG_PROCESS}, ?MODULE, [], []).
+start_link() -> gen_server:start_link({local, commitlog}, ?MODULE, [], []).
 init([]) -> {ok, []}.
 code_change(_, _, _) -> ok.
 handle_call(_, _, State) -> {reply, ok, State}.
@@ -79,7 +79,7 @@ send_to_kafka_riak_commitlog_test_() ->
        end},
       {"Returns error when call to Commitlog times out",
        fun() ->
-               Commitlog = whereis(?COMMITLOG_PROCESS),
+               Commitlog = whereis(commitlog),
                meck:expect(riak_object, key, 1, k6),
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call(Commitlog, {}, 0) end),
