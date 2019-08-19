@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, call_commitlog/1, do_call_commitlog/1]).
+-export([send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1, do_call_commitlog/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -15,37 +15,34 @@
 send_to_kafka_riak_commitlog(Object) ->
     case commitlog_request(Object) of
         {ok, Request} ->
-            SyncStartTime = microtimestamp(),
             ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
             Call = {ServerRef, Request},
             {_, _, Bucket, Key, _} = Request,
-            SyncResult = case ?MODULE:call_commitlog(Call) of
-                             ok ->
-                                 log(info, "call_commitlog success.", [], Bucket, Key),
-                                 ok;
-                             {error, CommitlogError} ->
-                                 log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
-                                 {error, CommitlogError}
-                         end,
-            SyncElapsedTime = microtimestamp() - SyncStartTime,
-            case send_timing_to_statsd(SyncElapsedTime) of
-                ok -> ok;
-                {error, StatsdError} ->
-                    log(warn, "Unable to send timing to statsd: ~w. Timing: ~p.", [StatsdError, SyncElapsedTime], Bucket, Key)
-            end,
-            SyncResult;
+            case ?MODULE:send_to_commitlog(Call) of
+                ok ->
+                    log(info, "call_commitlog success.", [], Bucket, Key),
+                    ok;
+                {error, CommitlogError} ->
+                    log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Bucket, Key),
+                    {error, CommitlogError}
+            end;
         {error, RiakObjectError} ->
             log(warn, "Unable to extract data from Riak object: ~w. Object: ~p.", [RiakObjectError, Object]),
             {error, RiakObjectError}
     end.
 
+send_to_commitlog(Call) ->
+    {Time, Result} = timer:tc(?MODULE, call_commitlog, [Call]),
+    send_timing_to_statsd(Time, Call),
+    Result.
+
 call_commitlog(Call) ->
     try ?MODULE:do_call_commitlog(Call)
-    catch
-        _:E -> {error, E}
+    catch _:E -> {error, E}
     end.
 
-%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
+%% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'},
+%%                 {produce, <<"store">>, <<"bucket">>, <<"key">>, <<"value">>}).
 do_call_commitlog({ServerRef, Request}) ->
     gen_server:call(ServerRef, Request).
 
@@ -82,23 +79,22 @@ get_action(Object) ->
         _ -> store
     end.
 
-microtimestamp() ->
-    {Mega, Sec, Micro} = os:timestamp(),
-    (Mega*1000000 + Sec)*1000000 + Micro.
+send_timing_to_statsd(Time, Call) ->
+    Message = io_lib:format("postcommit-hook-timing:~w|ms", [Time]),
+    {_, {_, _, Bucket, Key, _}} = Call,
+    case do_send_timing_to_statsd(Message) of
+        ok -> ok;
+        {error, Reason} -> log(warn, "Unable to send timing to statsd: ~w.", [Reason], Bucket, Key)
+    end.
 
-send_timing_to_statsd(Timing) ->
-    StatsdMessage = io_lib:format("postcommit-hook-timing:~w|ms", [Timing]),
-
+do_send_timing_to_statsd(Message) ->
     case gen_udp:open(0, [binary]) of
         {ok, Socket} ->
-            case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, StatsdMessage) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    {error, {unable_to_send_to_statsd_socket, Reason}}
+            case gen_udp:send(Socket, ?STATSD_HOST, ?STATSD_PORT, Message) of
+                ok -> ok;
+                {error, Reason} -> {error, {unable_to_send_to_statsd_socket, Reason}}
             end;
-        {error, Reason} ->
-            {error, {unable_to_open_statsd_socket, Reason}}
+        {error, Reason} -> {error, {unable_to_open_statsd_socket, Reason}}
     end.
 
 commitlog_node() ->
@@ -155,7 +151,7 @@ get_action_test_() ->
                ?assert(meck:validate(riak_object))
        end}]}.
 
-send_timing_to_statsd_test_() ->
+do_send_timing_to_statsd_test_() ->
     {foreach,
      fun() -> meck:new(gen_udp, [unstick]) end,
      fun(_) -> meck:unload(gen_udp) end,
@@ -163,7 +159,7 @@ send_timing_to_statsd_test_() ->
        fun() ->
                meck:expect(gen_udp, open, 2, {error, reason}),
                ?assertMatch({error, {unable_to_open_statsd_socket, _}},
-                            send_timing_to_statsd(0)),
+                            do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end},
       {"Returns error if unable to send on socket",
@@ -171,14 +167,14 @@ send_timing_to_statsd_test_() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, {error, reason}),
                ?assertMatch({error, {unable_to_send_to_statsd_socket, _}},
-                            send_timing_to_statsd(0)),
+                            do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end},
       {"Returns ok if send is successful",
        fun() ->
                meck:expect(gen_udp, open, 2, {ok, socket}),
                meck:expect(gen_udp, send, 4, ok),
-               ?assertEqual(ok, send_timing_to_statsd(0)),
+               ?assertEqual(ok, do_send_timing_to_statsd("")),
                ?assert(meck:validate(gen_udp))
        end}]}.
 

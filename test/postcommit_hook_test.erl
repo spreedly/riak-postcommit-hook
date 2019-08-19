@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 -export([init/1, code_change/3, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
--import(postcommit_hook, [send_to_kafka_riak_commitlog/1, call_commitlog/1]).
+-import(postcommit_hook, [send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1]).
 -include("src/postcommit_hook.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
