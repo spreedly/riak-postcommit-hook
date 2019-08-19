@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/4, call_commitlog/2]).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/1, call_commitlog/2]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -13,10 +13,11 @@
 %% ---------------------------------------------------------------------------
 
 send_to_kafka_riak_commitlog(Object) ->
-    case riak_object_components(Object) of
-        {ok, {Action, Bucket, Key, Value}} ->
+    case commitlog_request(Object) of
+        {ok, Request} ->
             SyncStartTime = microtimestamp(),
-            SyncResult = case ?MODULE:sync_to_commitlog(Action, Bucket, Key, Value) of
+            {_, _, Bucket, Key, _} = Request,
+            SyncResult = case ?MODULE:sync_to_commitlog(Request) of
                              ok ->
                                  log(info, "sync_to_commitlog success.", [], Bucket, Key),
                                  ok;
@@ -36,9 +37,8 @@ send_to_kafka_riak_commitlog(Object) ->
             {error, RiakObjectError}
     end.
 
-sync_to_commitlog(Action, Bucket, Key, Value) ->
+sync_to_commitlog(Request) ->
     ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
-    Request = {produce, Action, Bucket, Key, Value},
     try ?MODULE:call_commitlog(ServerRef, Request)
     catch
         _:E -> {error, E}
@@ -63,13 +63,13 @@ log(info, Format, Data, Bucket, Key) ->
 log(warn, Format, Data, Bucket, Key) ->
     error_logger:warning_msg(?LOG_MESSAGE_FORMAT, [io_lib:format(Format, Data), Bucket, Key]).
 
-riak_object_components(Object) ->
+commitlog_request(RiakObject) ->
     try
-        Action = get_action(Object),
-        Bucket = riak_object:bucket(Object),
-        Key    = riak_object:key(Object),
-        Value  = riak_object:get_value(Object),
-        {ok, {Action, Bucket, Key, Value}}
+        Action = get_action(RiakObject),
+        Bucket = riak_object:bucket(RiakObject),
+        Key    = riak_object:key(RiakObject),
+        Value  = riak_object:get_value(RiakObject),
+        {ok, {produce, Action, Bucket, Key, Value}}
     catch
         _:E -> {error, E}
     end.
@@ -116,7 +116,7 @@ commitlog_node() ->
 
 -ifdef(TEST).
 
-riak_object_components_test_() ->
+commitlog_request_test_() ->
     {foreach,
      fun() -> meck:new(riak_object, [non_strict]) end,
      fun(_) -> meck:unload(riak_object) end,
@@ -126,13 +126,13 @@ riak_object_components_test_() ->
                meck:expect(riak_object, bucket, 1, b),
                meck:expect(riak_object, key, 1, k),
                meck:expect(riak_object, get_value, 1, v),
-               ?assertEqual({ok, {store, b, k, v}}, riak_object_components(a_riak_object)),
+               ?assertEqual({ok, {produce, store, b, k, v}}, commitlog_request(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end},
       {"Returns error if object is invalid",
        fun() ->
                meck:expect(riak_object, get_metadata, 1, nil),
-               ?assertMatch({error, _}, riak_object_components(a_riak_object)),
+               ?assertMatch({error, _}, commitlog_request(a_riak_object)),
                ?assert(meck:validate(riak_object))
        end}]}.
 

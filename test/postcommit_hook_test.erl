@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 -export([init/1, code_change/3, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
--import(postcommit_hook, [send_to_kafka_riak_commitlog/1, sync_to_commitlog/4]).
+-import(postcommit_hook, [send_to_kafka_riak_commitlog/1, sync_to_commitlog/1]).
 -include("src/postcommit_hook.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -86,25 +86,21 @@ sync_to_commitlog_test_() ->
     {foreach,
      fun() -> meck:new(postcommit_hook, [passthrough]) end,
      fun(_) -> meck:unload(postcommit_hook) end,
-     [{"Passes expected arguments to call_commitlog",
+     [{"Passes expected ServerRef to call_commitlog",
        fun() ->
-               meck:expect(postcommit_hook, call_commitlog,
-                           fun(ServerRef, Req) -> {ServerRef, Req} end),
-               ?assertEqual({{?COMMITLOG_PROCESS, 'commitlog@nohost'},
-                             {produce, a, b, k, v}},
-                            sync_to_commitlog(a, b, k, v)),
+               meck:expect(postcommit_hook, call_commitlog, fun(ServerRef, _) -> ServerRef end),
+               ?assertEqual({?COMMITLOG_PROCESS, 'commitlog@nohost'}, sync_to_commitlog(a_request)),
                ?assert(meck:validate(postcommit_hook))
        end},
       {"Returns ok when call_commitlog succeeds",
        fun() ->
                meck:expect(postcommit_hook, call_commitlog, 2, ok),
-               ?assertEqual(ok, sync_to_commitlog(a, b, k, v)),
+               ?assertEqual(ok, sync_to_commitlog(a_request)),
                ?assert(meck:validate(postcommit_hook))
        end},
       {"Returns error when call_commitlog fails",
        fun() ->
-               meck:expect(postcommit_hook, call_commitlog,
-                           fun(_, _) -> exit(forced_by_test) end),
-               ?assertMatch({error, _}, sync_to_commitlog(a, b, k, v))
+               meck:expect(postcommit_hook, call_commitlog, fun(_, _) -> exit(forced_by_test) end),
+               ?assertMatch({error, _}, sync_to_commitlog(a_request))
        end}
      ]}.
