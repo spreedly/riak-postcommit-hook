@@ -17,14 +17,17 @@ send_to_kafka_riak_commitlog(RiakObject) ->
         {ok, Request} ->
             ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
             Call = {ServerRef, Request},
-            case ?MODULE:send_to_commitlog(Call) of
+            {MicroTime, Result} = timer:tc(?MODULE, send_to_commitlog, [Call]),
+            Time = round(MicroTime / 1000),
+            case Result of
                 ok ->
-                    log(info, "call_commitlog success.", [], Call),
-                    ok;
-                {error, CommitlogError} ->
-                    log(warn, "Unable to sync data to Commitlog: ~w.", [CommitlogError], Call),
-                    {error, CommitlogError}
-            end;
+                    log(info, "Send to Commitlog succeeded. Time: ~5.. B ms.",
+                        [Time], Call);
+                {error, Error} ->
+                    log(warn, "Send to Commitlog failed. Time: ~5.. B ms. Error: ~w.",
+                        [Time, Error], Call)
+            end,
+            Result;
         {error, RiakObjectError} ->
             log(warn, "Unable to extract data from Riak object '~w': ~w.",
                 [RiakObject, RiakObjectError]),
