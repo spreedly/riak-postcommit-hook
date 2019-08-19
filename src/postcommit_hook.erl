@@ -1,5 +1,10 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1, do_call_commitlog/1]).
+-export([send_to_kafka_riak_commitlog/1,
+         send_to_commitlog_with_retries/3,
+         retry_send_to_commitlog/3,
+         send_to_commitlog/1,
+         call_commitlog/1,
+         do_call_commitlog/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -16,21 +21,50 @@ send_to_kafka_riak_commitlog(RiakObject) ->
     case commitlog_request(RiakObject) of
         {ok, Request} ->
             Call = {{?COMMITLOG_PROCESS, commitlog_node()}, Request},
-            {MicroTime, Result} = timer:tc(?MODULE, send_to_commitlog, [Call]),
+            {MicroTime, {Result, Attempts}} = timer:tc(?MODULE, send_to_commitlog_with_retries,
+                                                       [Call, 1, ?INITIAL_RETRY_DELAY_MS]),
             Time = round(MicroTime / 1000),
             case Result of
                 ok ->
-                    log(info, "Send to Commitlog succeeded. Time: ~w ms.",
-                        [Time], Call);
+                    log(info, "Send to Commitlog succeeded. Time: ~w ms. Attempts: ~w.",
+                        [Time, Attempts], Call);
                 {error, Error} ->
-                    log(warn, "Send to Commitlog failed. Time: ~w ms. Error: ~w.",
-                        [Time, Error], Call)
+                    log(warn, "Send to Commitlog failed. Time: ~w ms. Attempts: ~w. Error: ~w.",
+                        [Time, Attempts, Error], Call)
             end,
             Result;
         {error, RiakObjectError} ->
             log(warn, "Unable to extract data from Riak object '~w': ~w.",
                 [RiakObject, RiakObjectError]),
             {error, RiakObjectError}
+    end.
+
+send_to_commitlog_with_retries(Call, Attempts, RetryDelay) ->
+    case ?MODULE:send_to_commitlog(Call) of
+        ok ->
+            {ok, Attempts};
+        Error ->
+            {error, Reason} = Error,
+            log(info, "Unable to send to Commitlog. Attempts: ~p. Error: ~w.",
+                [Attempts, Reason], Call),
+            case Attempts of
+                % First attempt failed, try again
+                1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, RetryDelay);
+
+                % All attempts failed, return error
+                ?MAX_ATTEMPTS -> {Error, Attempts};
+
+                % Retry failed, try again
+                _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, RetryDelay)
+            end
+    end.
+
+retry_send_to_commitlog(Call, Attempts, RetryDelay) ->
+    receive
+    after
+        RetryDelay ->
+            NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
+            send_to_commitlog_with_retries(Call, Attempts + 1, NextRetryDelay)
     end.
 
 send_to_commitlog(Call) ->
@@ -66,6 +100,20 @@ log(info, Format, Data, Bucket, Key) ->
     error_logger:info_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]);
 log(warn, Format, Data, Bucket, Key) ->
     error_logger:warning_msg(?LOG_MSG_FMT, [io_lib:format(Format, Data), Bucket, Key]).
+
+%% Seeding is necessary to avoid a race condition where multiple postcommit-
+%% hook processes automatically seed the RNG in the same manner and all use the
+%% same seed, which defeats the purpose of adding jitter.
+seed_rng() ->
+    {_, Seconds, MicroSecs} = now(),
+    random:seed(erlang:phash2(self()), Seconds, MicroSecs).
+
+%% Returns N ± N*Percent. For example, `jitter(100, 0.1)` returns a number in
+%% the interval [90, 110].
+jitter(N, Percent) when 0.0 =< Percent andalso Percent =< 1.0 ->
+    round(N * (1.0 - Percent + (random:uniform() * Percent * 2.0)));
+jitter(_N, _Percent) ->
+    error({badarg, "Percent must be in the interval [0.0, 1.0]"}).
 
 commitlog_request(RiakObject) ->
     try

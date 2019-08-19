@@ -3,7 +3,12 @@
 -behaviour(gen_server).
 -export([init/1, code_change/3, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
--import(postcommit_hook, [send_to_kafka_riak_commitlog/1, send_to_commitlog/1, call_commitlog/1]).
+-import(postcommit_hook,
+        [send_to_kafka_riak_commitlog/1,
+         send_to_commitlog_with_retries/3,
+         retry_send_to_commitlog/3,
+         send_to_commitlog/1,
+         call_commitlog/1]).
 -include("src/postcommit_hook.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -20,6 +25,10 @@ send_to_kafka_riak_commitlog_test_() ->
      fun() ->
              start_link(),
              meck:new(postcommit_hook, [passthrough, non_strict]),
+             meck:expect(postcommit_hook, retry_send_to_commitlog,
+                         fun(Call, Attempts, _) ->
+                                 send_to_commitlog_with_retries(Call, Attempts+1, 0)
+                         end),
              meck:new(riak_object, [non_strict]),
              meck:expect(riak_object, get_metadata, 1, dict:new()),
              meck:expect(riak_object, bucket, 1, b),
