@@ -12,8 +12,8 @@
 %% API
 %% ---------------------------------------------------------------------------
 
-send_to_kafka_riak_commitlog(Object) ->
-    case commitlog_request(Object) of
+send_to_kafka_riak_commitlog(RiakObject) ->
+    case commitlog_request(RiakObject) of
         {ok, Request} ->
             ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
             Call = {ServerRef, Request},
@@ -26,7 +26,8 @@ send_to_kafka_riak_commitlog(Object) ->
                     {error, CommitlogError}
             end;
         {error, RiakObjectError} ->
-            log(warn, "Unable to extract data from Riak object: ~w. Object: ~p.", [RiakObjectError, Object]),
+            log(warn, "Unable to extract data from Riak object '~w': ~w.",
+                [RiakObject, RiakObjectError]),
             {error, RiakObjectError}
     end.
 
