@@ -43,16 +43,15 @@ send_to_commitlog_with_retries(Call, Attempts, Delay) ->
     case ?MODULE:send_to_commitlog(Call) of
         ok ->
             {ok, Attempts};
-        Error ->
-            {error, Reason} = Error,
+        {error, Error} ->
             log(info, "Unable to send to Commitlog. Attempts: ~p. Error: ~w.",
-                [Attempts, Reason], Call),
+                [Attempts, Error], Call),
             case Attempts of
                 % First attempt failed, try again
                 1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay);
 
                 % All attempts failed, return error
-                ?MAX_ATTEMPTS -> {Error, Attempts};
+                ?MAX_ATTEMPTS -> {{error, Error}, Attempts};
 
                 % Retry failed, try again
                 _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay)
