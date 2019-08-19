@@ -26,8 +26,8 @@ send_to_kafka_riak_commitlog_test_() ->
              start_link(),
              meck:new(postcommit_hook, [passthrough, non_strict]),
              meck:expect(postcommit_hook, retry_send_to_commitlog,
-                         fun(Call, Attempts, _) ->
-                                 send_to_commitlog_with_retries(Call, Attempts+1, 0)
+                         fun(Call, Attempts, _Delay) ->
+                                 send_to_commitlog_with_retries(Call, Attempts, 0)
                          end),
              meck:new(riak_object, [non_strict]),
              meck:expect(riak_object, get_metadata, 1, dict:new()),
@@ -90,14 +90,7 @@ retry_send_to_commitlog_test_() ->
     {foreach,
      fun() -> meck:new(postcommit_hook, [passthrough]) end,
      fun(_) -> meck:unload(postcommit_hook) end,
-     [{"Calls retry_send_to_commitlog with Attempts incremented",
-       fun() ->
-               meck:expect(postcommit_hook, send_to_commitlog_with_retries,
-                           fun(_, Attempts, _) -> Attempts end),
-               ?assertEqual(101, retry_send_to_commitlog({}, 100, 0)),
-               ?assert(meck:validate(postcommit_hook))
-       end},
-      {"Calls retry_send_to_commitlog with Delay increased",
+     [{"Calls send_to_commitlog_with_retries with Delay increased",
        fun() ->
                meck:expect(postcommit_hook, send_to_commitlog_with_retries,
                            fun(_, _, Delay) -> Delay end),

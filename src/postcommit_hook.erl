@@ -22,7 +22,7 @@ send_to_kafka_riak_commitlog(RiakObject) ->
         {ok, Request} ->
             Call = {{?COMMITLOG_PROCESS, commitlog_node()}, Request},
             {MicroTime, {Result, Attempts}} = timer:tc(?MODULE, send_to_commitlog_with_retries,
-                                                       [Call, 1, ?INITIAL_RETRY_DELAY_MS]),
+                                                       [Call, 0, ?INITIAL_RETRY_DELAY_MS]),
             Time = round(MicroTime / 1000),
             case Result of
                 ok ->
@@ -39,31 +39,33 @@ send_to_kafka_riak_commitlog(RiakObject) ->
             {error, RiakObjectError}
     end.
 
-send_to_commitlog_with_retries(Call, Attempts, Delay) ->
-    case ?MODULE:send_to_commitlog(Call) of
+send_to_commitlog_with_retries(Call, NumAttempts, Delay) ->
+    Result = ?MODULE:send_to_commitlog(Call),
+    Attempts = NumAttempts + 1,
+    case Result of
         ok ->
             {ok, Attempts};
         {error, Error} ->
             log(info, "Unable to send to Commitlog. Attempts: ~p. Error: ~w.",
                 [Attempts, Error], Call),
             case Attempts of
-                % First attempt failed, try again
-                1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay);
-
                 % All attempts failed, return error
                 ?MAX_ATTEMPTS -> {{error, Error}, Attempts};
 
-                % Attempt failed, try again
+                % First attempt failed, try again
+                1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay);
+
+                % Other attempt failed, try again
                 _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay)
             end
     end.
 
-retry_send_to_commitlog(Call, Attempts, Delay) ->
+retry_send_to_commitlog(Call, NumAttempts, Delay) ->
     receive
     after
         Delay ->
             NextDelay = jitter(Delay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
-            ?MODULE:send_to_commitlog_with_retries(Call, Attempts + 1, NextDelay)
+            ?MODULE:send_to_commitlog_with_retries(Call, NumAttempts, NextDelay)
     end.
 
 send_to_commitlog(Call) ->
