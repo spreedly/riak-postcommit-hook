@@ -32,7 +32,7 @@ send_to_kafka_riak_commitlog_test_() ->
      end,
      [{"Returns error when Riak object is invalid",
        fun() ->
-               meck:expect(riak_object, bucket, 1, fun(_) -> error(forced_by_test1) end),
+               meck:expect(riak_object, bucket, fun(_) -> error(forced_by_test1) end),
                ?assertMatch({error, _}, send_to_kafka_riak_commitlog(test_riak_object1)),
                ?assert(meck:validate(postcommit_hook))
        end},
