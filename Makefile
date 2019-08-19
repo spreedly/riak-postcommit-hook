@@ -23,6 +23,10 @@ compile: $(DEPS_DIR)
 test:
 	./rebar eunit
 
+.PHONY:shell
+shell: compile
+	erl -pa ebin
+
 .PHONY:install
 install:
 	cp ./ebin/postcommit_hook.beam $(HOME)/dev/dev-services/riak
