@@ -26,6 +26,7 @@ send_to_kafka_riak_commitlog_test_() ->
              start_link(),
              meck:new(postcommit_hook, [passthrough, non_strict]),
              meck:expect(postcommit_hook, retry_send_to_commitlog,
+                         % Disable retry delay
                          fun(Call, Attempts, _Delay) ->
                                  send_to_commitlog_with_retries(Call, Attempts, 0)
                          end),
@@ -103,13 +104,13 @@ call_commitlog_test_() ->
     {foreach,
      fun() -> meck:new(postcommit_hook, [passthrough]) end,
      fun(_) -> meck:unload(postcommit_hook) end,
-     [{"Returns ok when do_call_commitlog succeeds",
+     [{"Returns ok when call succeeds",
        fun() ->
                meck:expect(postcommit_hook, do_call_commitlog, 1, ok),
                ?assertEqual(ok, call_commitlog(a_request)),
                ?assert(meck:validate(postcommit_hook))
        end},
-      {"Returns error when do_call_commitlog fails",
+      {"Returns error when call fails",
        fun() ->
                meck:expect(postcommit_hook, do_call_commitlog, fun(_) -> exit(forced_by_test) end),
                ?assertMatch({error, _}, call_commitlog(a_request))
