@@ -90,3 +90,26 @@ $ s3cmd --configure # use the "kafka-integration S3 credentials" from the 1Passw
 $ make release # compiles, tars up the release, pushes to S3
 ```
 
+
+## Tests
+
+Tests are run automatically when you compile the project using `make`.
+
+### Manually run all tests
+
+To run all the tests (without compiling the project):
+
+```
+$ make test
+```
+
+### Manually run specific tests
+
+To run specific tests:
+
+```
+$ ./rebar eunit test=postcommit_hook:TEST_NAME
+
+# For example:
+#   ./rebar eunit test=postcommit_hook:call_commitlog_test_
+```
