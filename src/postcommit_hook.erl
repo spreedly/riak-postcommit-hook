@@ -165,6 +165,21 @@ commitlog_node() ->
 
 -ifdef(TEST).
 
+jitter_test_() ->
+    [{"Returns N ± N*Percent.",
+      fun() ->
+              J = jitter(100, 0.1),
+              ?assert(90 =< J andalso J =< 100)
+      end},
+     {"Returns error when Percent is < 0",
+      fun() ->
+              ?assertError({badarg, _}, jitter(1, -0.1))
+      end},
+     {"Returns error when Percent is > 1",
+      fun() ->
+              ?assertError({badarg, _}, jitter(1, 1.1))
+      end}].
+
 commitlog_request_test_() ->
     {foreach,
      fun() -> meck:new(riak_object, [non_strict]) end,
