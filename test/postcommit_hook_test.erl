@@ -84,8 +84,27 @@ send_to_kafka_riak_commitlog_test_() ->
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call(Commitlog, {}, 0) end),
                ?assertMatch({error, {timeout, _}}, send_to_kafka_riak_commitlog(test_riak_object6))
-       end}
-     ]}.
+       end}]}.
+
+retry_send_to_commitlog_test_() ->
+    {foreach,
+     fun() -> meck:new(postcommit_hook, [passthrough]) end,
+     fun(_) -> meck:unload(postcommit_hook) end,
+     [{"Calls retry_send_to_commitlog with Attempts incremented",
+       fun() ->
+               meck:expect(postcommit_hook, send_to_commitlog_with_retries,
+                           fun(_, Attempts, _) -> Attempts end),
+               ?assertEqual(101, retry_send_to_commitlog({}, 100, 0)),
+               ?assert(meck:validate(postcommit_hook))
+       end},
+      {"Calls retry_send_to_commitlog with Delay increased",
+       fun() ->
+               meck:expect(postcommit_hook, send_to_commitlog_with_retries,
+                           fun(_, _, Delay) -> Delay end),
+               Delay = 100,
+               ?assert(Delay < retry_send_to_commitlog({}, 0, Delay)),
+               ?assert(meck:validate(postcommit_hook))
+       end}]}.
 
 call_commitlog_test_() ->
     {foreach,
@@ -101,5 +120,4 @@ call_commitlog_test_() ->
        fun() ->
                meck:expect(postcommit_hook, do_call_commitlog, fun(_) -> exit(forced_by_test) end),
                ?assertMatch({error, _}, call_commitlog(a_request))
-       end}
-     ]}.
+       end}]}.

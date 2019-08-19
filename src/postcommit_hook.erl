@@ -53,7 +53,7 @@ send_to_commitlog_with_retries(Call, Attempts, Delay) ->
                 % All attempts failed, return error
                 ?MAX_ATTEMPTS -> {{error, Error}, Attempts};
 
-                % Retry failed, try again
+                % Attempt failed, try again
                 _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay)
             end
     end.
@@ -63,7 +63,7 @@ retry_send_to_commitlog(Call, Attempts, Delay) ->
     after
         Delay ->
             NextDelay = jitter(Delay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
-            send_to_commitlog_with_retries(Call, Attempts + 1, NextDelay)
+            ?MODULE:send_to_commitlog_with_retries(Call, Attempts + 1, NextDelay)
     end.
 
 send_to_commitlog(Call) ->
