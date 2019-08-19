@@ -39,7 +39,7 @@ send_to_kafka_riak_commitlog(RiakObject) ->
             {error, RiakObjectError}
     end.
 
-send_to_commitlog_with_retries(Call, Attempts, RetryDelay) ->
+send_to_commitlog_with_retries(Call, Attempts, Delay) ->
     case ?MODULE:send_to_commitlog(Call) of
         ok ->
             {ok, Attempts};
@@ -49,22 +49,22 @@ send_to_commitlog_with_retries(Call, Attempts, RetryDelay) ->
                 [Attempts, Reason], Call),
             case Attempts of
                 % First attempt failed, try again
-                1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, RetryDelay);
+                1 -> seed_rng(), ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay);
 
                 % All attempts failed, return error
                 ?MAX_ATTEMPTS -> {Error, Attempts};
 
                 % Retry failed, try again
-                _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, RetryDelay)
+                _ -> ?MODULE:retry_send_to_commitlog(Call, Attempts, Delay)
             end
     end.
 
-retry_send_to_commitlog(Call, Attempts, RetryDelay) ->
+retry_send_to_commitlog(Call, Attempts, Delay) ->
     receive
     after
-        RetryDelay ->
-            NextRetryDelay = jitter(RetryDelay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
-            send_to_commitlog_with_retries(Call, Attempts + 1, NextRetryDelay)
+        Delay ->
+            NextDelay = jitter(Delay * ?RETRY_DELAY_MULTIPLIER, ?RETRY_DELAY_JITTER),
+            send_to_commitlog_with_retries(Call, Attempts + 1, NextDelay)
     end.
 
 send_to_commitlog(Call) ->
