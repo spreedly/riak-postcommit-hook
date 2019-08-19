@@ -1,5 +1,5 @@
 -module(postcommit_hook).
--export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/1, call_commitlog/1]).
+-export([send_to_kafka_riak_commitlog/1, sync_to_commitlog/1, do_call_commitlog/1]).
 
 -include("src/postcommit_hook.hrl").
 
@@ -40,13 +40,13 @@ send_to_kafka_riak_commitlog(Object) ->
     end.
 
 sync_to_commitlog(Call) ->
-    try ?MODULE:call_commitlog(Call)
+    try ?MODULE:do_call_commitlog(Call)
     catch
         _:E -> {error, E}
     end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'}, {produce, <<"store">>, <<"transactions">>, <<"key">>, <<"value for today">>}).
-call_commitlog({ServerRef, Request}) ->
+do_call_commitlog({ServerRef, Request}) ->
     gen_server:call(ServerRef, Request).
 
 
