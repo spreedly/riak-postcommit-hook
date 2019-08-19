@@ -37,7 +37,7 @@ send_to_kafka_riak_commitlog(Object) ->
     end.
 
 sync_to_commitlog(Action, Bucket, Key, Value) ->
-    ServerRef = {?COMMITLOG_PROCESS, remote_node()},
+    ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
     Request = {produce, Action, Bucket, Key, Value},
     try ?MODULE:call_commitlog(ServerRef, Request)
     catch
@@ -100,7 +100,7 @@ send_timing_to_statsd(Timing) ->
             {error, {unable_to_open_statsd_socket, Reason}}
     end.
 
-remote_node() ->
+commitlog_node() ->
     Hostname = case os:getenv("COMMITLOG_HOSTNAME") of
                    false -> [_Name, Host] = string:tokens(atom_to_list(node()), "@"),
                             Host;
@@ -181,15 +181,15 @@ send_timing_to_statsd_test_() ->
                ?assert(meck:validate(gen_udp))
        end}]}.
 
-remote_node_test_() ->
+commitlog_node_test_() ->
     [{"Uses node host name if COMMITLOG_HOSTNAME env var is not set",
       fun() ->
-              ?assertEqual('commitlog@nohost', remote_node())
+              ?assertEqual('commitlog@nohost', commitlog_node())
       end},
      {"Uses COMMITLOG_HOSTNAME env var if set",
       fun() ->
               os:putenv("COMMITLOG_HOSTNAME", "commitlog.test"),
-              ?assertEqual('commitlog@commitlog.test', remote_node())
+              ?assertEqual('commitlog@commitlog.test', commitlog_node())
       end}].
 
 force_separator_before_test_results_test_() ->
