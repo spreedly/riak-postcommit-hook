@@ -76,7 +76,9 @@ send_to_commitlog(Call) ->
 
 call_commitlog(Call) ->
     try ?MODULE:do_call_commitlog(Call)
-    catch _:E -> {error, E}
+    catch
+        _:{Error, {gen_server, call, _}} -> {error, Error};
+        _:Error -> {error, Error}
     end.
 
 %% gen_server:call({kafka_riak_commitlog, 'commitlog@127.0.0.1'},

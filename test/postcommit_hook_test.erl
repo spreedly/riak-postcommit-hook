@@ -76,7 +76,7 @@ send_to_kafka_riak_commitlog_test_() ->
                meck:expect(riak_object, key, 1, k5),
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call({commitlog, invalid_node}, {}) end),
-               ?assertMatch({error, {{nodedown, _}, _}}, send_to_kafka_riak_commitlog(test_riak_object5))
+               ?assertMatch({error, {nodedown, _}}, send_to_kafka_riak_commitlog(test_riak_object5))
        end},
       {"Returns error when call to Commitlog times out",
        fun() ->
@@ -84,7 +84,7 @@ send_to_kafka_riak_commitlog_test_() ->
                meck:expect(riak_object, key, 1, k6),
                meck:expect(postcommit_hook, do_call_commitlog,
                            fun(_) -> gen_server:call(Commitlog, {}, 0) end),
-               ?assertMatch({error, {timeout, _}}, send_to_kafka_riak_commitlog(test_riak_object6))
+               ?assertMatch({error, timeout}, send_to_kafka_riak_commitlog(test_riak_object6))
        end}]}.
 
 retry_send_to_commitlog_test_() ->
