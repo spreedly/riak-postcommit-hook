@@ -21,10 +21,10 @@ send_to_kafka_riak_commitlog(RiakObject) ->
             Time = round(MicroTime / 1000),
             case Result of
                 ok ->
-                    log(info, "Send to Commitlog succeeded. Time: ~5.. B ms.",
+                    log(info, "Send to Commitlog succeeded. Time: ~w ms.",
                         [Time], Call);
                 {error, Error} ->
-                    log(warn, "Send to Commitlog failed. Time: ~5.. B ms. Error: ~w.",
+                    log(warn, "Send to Commitlog failed. Time: ~w ms. Error: ~w.",
                         [Time, Error], Call)
             end,
             Result;
