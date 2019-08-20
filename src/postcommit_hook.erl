@@ -15,8 +15,7 @@
 send_to_kafka_riak_commitlog(RiakObject) ->
     case commitlog_request(RiakObject) of
         {ok, Request} ->
-            ServerRef = {?COMMITLOG_PROCESS, commitlog_node()},
-            Call = {ServerRef, Request},
+            Call = {{?COMMITLOG_PROCESS, commitlog_node()}, Request},
             {MicroTime, Result} = timer:tc(?MODULE, send_to_commitlog, [Call]),
             Time = round(MicroTime / 1000),
             case Result of
