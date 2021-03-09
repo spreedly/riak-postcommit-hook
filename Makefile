@@ -15,7 +15,7 @@ $(DEPS_DIR):
 	./rebar get-deps
 
 compile: $(DEPS_DIR)
-	@sed -i '.backup' -e 's/^{deps,.*/{deps, []}./' rebar.config
+	@sed -i'.backup' -e 's/^{deps,.*/{deps, []}./' rebar.config
 	./rebar compile
 	@mv rebar.config.backup rebar.config
 
