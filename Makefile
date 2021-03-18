@@ -13,6 +13,7 @@ distclean: clean
 
 $(DEPS_DIR):
 	./rebar get-deps
+	./rebar compile
 
 compile: $(DEPS_DIR)
 	@sed -i'.backup' -e 's/^{deps,.*/{deps, []}./' rebar.config
